@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
@@ -25,6 +25,9 @@ from orch.db.safe_migrate import apply as safe_apply
 from orch.db.safe_migrate import dry_run as safe_dry_run
 from orch.db.safe_migrate import rollback as safe_rollback
 from orch.db.session import safe_create_engine
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -74,32 +77,92 @@ class PipelineResult:
 # ---------------------------------------------------------------------------
 
 
+def _run_bootstrap_sql(tempdb_url: str, statements: Sequence[str]) -> None:
+    """Execute bootstrap SQL against the throwaway dry-run container.
+
+    Runs each statement in its own autocommit transaction so a statement that
+    cannot run inside a transaction block (some ``CREATE EXTENSION`` variants)
+    still applies. Raises on the first failing statement — the caller's broad
+    except turns that into a MIGRATION_INVALID result with the error attached.
+
+    Args:
+        tempdb_url: Connection URL for the disposable testcontainer Postgres.
+        statements: SQL statements to run, in order, before the alembic upgrade.
+    """
+    engine = safe_create_engine(tempdb_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            for stmt in statements:
+                conn.execution_options(isolation_level="AUTOCOMMIT").execute(text(stmt))
+    finally:
+        engine.dispose()
+
+
 def run_pre_merge_dry_run(
     batch_id: str | int | None,
     worktree_path: str | None = None,
+    *,
+    db_image: str = "postgres:15-alpine",
+    script_location: str | None = None,
+    bootstrap_sql: Sequence[str] = (),
 ) -> PipelineResult:
-    """Phase 1: Spin testcontainer, apply pending revisions, run integration tests.
+    """Phase 1: Spin a throwaway testcontainer, ``alembic upgrade head``, tear down.
 
-    When worktree_path is provided, alembic uses that worktree's migrations
-    directory — so the batch's new migrations are actually exercised.
-    When not provided, falls back to the daemon's main-repo migrations location
-    (backward-compat for operator entry points; do NOT use this path in the
-    merge queue — merge_queue.py always passes worktree_path).
+    Validation-only: applies the batch's migrations to a fresh, disposable
+    Postgres and reports whether they apply cleanly. It never touches a live DB.
+
+    The migrations directory and container image are project-specific. The
+    orch-DB-owning project (iw-ai-core) uses the default ``postgres:15-alpine``
+    image and its own ``orch/db/migrations`` layout; other projects pass their
+    own ``db_image`` and ``script_location`` (resolved from
+    ``ProjectConfig.migration_validation``) so the right migrations run against a
+    compatible image. (I-00131: hard-coding ``orch/db/migrations`` made this fail
+    for iw-rag, whose migrations live under ``alembic/`` and need the ParadeDB
+    image.)
+
+    Args:
+        batch_id: Batch whose migrations are being validated (for logging).
+        worktree_path: Worktree root. Used to derive the default orch-layout
+            script_location when ``script_location`` is not given.
+        db_image: Docker image for the throwaway Postgres. Must expose 5432 with
+            the standard testcontainers Postgres user/password contract.
+        script_location: Absolute path to the Alembic migrations directory to
+            exercise. When None, falls back to the orch layout
+            ``{worktree_path}/orch/db/migrations`` (backward-compat for the
+            orch-DB project and operator entry points).
+        bootstrap_sql: Statements run against the fresh container BEFORE the
+            upgrade (e.g. ``CREATE EXTENSION`` for extensions the migrations
+            assume pre-exist). Each is executed and committed in order.
+
+    Returns:
+        PipelineResult(phase="dry_run"): success True when the upgrade applied
+        cleanly, otherwise final_batch_state="MIGRATION_INVALID" with the error.
     """
     from testcontainers.postgres import PostgresContainer
 
-    logger.info("[pipeline] Phase 1 dry-run starting for batch %s", batch_id)
+    logger.info("[pipeline] Phase 1 dry-run starting for batch %s (image=%s)", batch_id, db_image)
 
     container: PostgresContainer | None = None
     try:
-        container = PostgresContainer("postgres:15-alpine")
+        container = PostgresContainer(db_image)
         container.start()
         tempdb_url = container.get_connection_url().replace(
             "postgresql+psycopg2://", "postgresql+psycopg://"
         )
 
-        script_location = f"{worktree_path}/orch/db/migrations" if worktree_path else None
-        result = safe_dry_run(tempdb_url, batch_id=batch_id, script_location=script_location)
+        resolved_script_location = script_location or (
+            f"{worktree_path}/orch/db/migrations" if worktree_path else None
+        )
+
+        # Project migrations may assume extensions that the base image installs but
+        # does not pre-create (or that need an explicit CREATE EXTENSION). Run any
+        # configured bootstrap SQL on the fresh container before upgrading.
+        if bootstrap_sql:
+            _run_bootstrap_sql(tempdb_url, bootstrap_sql)
+
+        result = safe_dry_run(
+            tempdb_url, batch_id=batch_id, script_location=resolved_script_location
+        )
 
         if not result.success:
             return PipelineResult(

@@ -24,8 +24,13 @@ def _make_branch_info_on_default() -> BranchInfo:
     return BranchInfo(current_branch="main", default_branch="main", is_on_default=True)
 
 
-def make_project_config() -> ProjectConfig:
-    """Return make project config."""
+def make_project_config(*, owns_orch_db: bool = False) -> ProjectConfig:
+    """Return make project config.
+
+    owns_orch_db=True marks this as the orch-DB-owning project so _merge_item
+    runs the orch migration pipeline (rebase + apply); default False is
+    validation-only. See safe_migrate.manages_orch_db.
+    """
     return ProjectConfig(
         id="test-proj",
         display_name="Test Project",
@@ -35,6 +40,7 @@ def make_project_config() -> ProjectConfig:
         model="minimax",
         worktree_base=".worktrees",
         config={},
+        owns_orch_db=owns_orch_db,
     )
 
 
@@ -306,7 +312,7 @@ class TestMergeItem:
             patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
             patch("orch.daemon.merge_queue.worktree_compose.down") as mock_down,
         ):
-            _merge_item(db, item, "test-proj", make_project_config())
+            _merge_item(db, item, "test-proj", make_project_config(owns_orch_db=True))
 
         assert item.status == BatchItemStatus.migration_rebase_failed
         assert "boom" in item.notes
@@ -359,7 +365,7 @@ class TestMergeItem:
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
-            _merge_item(db, item, "test-proj", make_project_config())
+            _merge_item(db, item, "test-proj", make_project_config(owns_orch_db=True))
 
         mock_dry.assert_called_once()
         call_kwargs = mock_dry.call_args[1]
@@ -505,7 +511,7 @@ class TestMergeItemC4WorkItemRevert:
             patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
-            _merge_item(db, item, "test-proj", make_project_config())
+            _merge_item(db, item, "test-proj", make_project_config(owns_orch_db=True))
 
         assert item.status == BatchItemStatus.migration_rebase_failed
         assert wi.status == WorkItemStatus.failed
@@ -546,7 +552,7 @@ class TestMergeItemC4WorkItemRevert:
             patch("orch.daemon.merge_queue.run_pre_merge_dry_run", return_value=mock_dry_result),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
-            _merge_item(db, item, "test-proj", make_project_config())
+            _merge_item(db, item, "test-proj", make_project_config(owns_orch_db=True))
 
         assert item.status == BatchItemStatus.migration_invalid
         assert wi.status == WorkItemStatus.failed

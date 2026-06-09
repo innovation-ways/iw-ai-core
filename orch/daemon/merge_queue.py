@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 from orch.auto_merge_aggregator import resolve_project_config
 from orch.daemon import auto_merge, worktree_compose
 from orch.daemon.migration_pipeline import (
+    PipelineResult,
     is_merge_queue_frozen,
     run_post_merge_apply,
     run_pre_merge_dry_run,
@@ -197,7 +198,21 @@ def _merge_item(
     )
     logger.info("[%s] Merging %s (worktree: %s)", project_id, item_id, worktree_path)
 
-    if batch_item.batch_id is not None:
+    # The orchestrator's migration machinery is orch-DB-specific. Only the project
+    # that owns the global orch DB (iw-ai-core) runs the pre-merge rebase (which
+    # rewrites down_revisions onto the orch chain) and the post-merge apply-to-live.
+    # Every other project keeps its own migrations + DB and deploys them itself;
+    # for those we only *validate* migrations (Phase 1 dry-run) when they opt in
+    # via ProjectConfig.migration_validation. (I-00131: applying the orch
+    # `orch/db/migrations` assumption to iw-rag — which keeps migrations under
+    # `alembic/` — made the Phase-1 dry-run fail and wrongly blocked the merge.)
+    is_orch_db_project = project_config.owns_orch_db
+    migration_validation = project_config.migration_validation
+
+    # Phase 0: rebase + down_revision rewrite — orch-DB project only. The rebase
+    # always rewrites the batch chain root onto the orch main head, which would
+    # corrupt another project's hand-authored down_revisions.
+    if is_orch_db_project and batch_item.batch_id is not None:
         rebase_result = run_pre_merge_rebase(
             batch_item.batch_id, worktree_path, project_config.working_dir
         )
@@ -248,35 +263,57 @@ def _merge_item(
             )
             return
 
-    # Phase 1: dry-run migration against testcontainer
+    # Phase 1: validate migrations against a throwaway testcontainer.
+    # iw-ai-core validates its own orch/db/migrations with the default image; other
+    # projects validate their own migrations using the image + dir resolved from
+    # migration_validation. Non-orch projects that did not opt in skip validation
+    # (dry_result stays None → merge proceeds without a migration dry-run).
+    dry_result: PipelineResult | None = None
     if batch_item.batch_id is not None:
-        dry_result = run_pre_merge_dry_run(batch_item.batch_id, worktree_path=worktree_path)
-        if not dry_result.success:
-            batch_item.status = BatchItemStatus.migration_invalid
-            batch_item.notes = f"Phase 1 dry-run failed: {dry_result.message}"
-            # C4: revert WorkItem so it is not orphaned as completed
-            _revert_work_item(db, project_id, item_id)
-            db.commit()
-            compose_path = (
-                Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None
-            )
-            worktree_compose.down(str(batch_item.id), compose_path)
-            _emit_event(
-                db,
-                project_id,
-                "migration_pipeline",
-                item_id,
-                "work_item",
-                f"Phase 1 dry-run failed: {dry_result.message}",
-                {"phase": "dry_run", "success": False, "batch_id": batch_item.batch_id},
-            )
-            logger.warning(
-                "[%s] Phase 1 dry-run failed for %s — batch item %s marked MIGRATION_INVALID",
-                project_id,
-                item_id,
+        if is_orch_db_project:
+            dry_result = run_pre_merge_dry_run(batch_item.batch_id, worktree_path=worktree_path)
+        elif migration_validation is not None:
+            dry_result = run_pre_merge_dry_run(
                 batch_item.batch_id,
+                worktree_path=worktree_path,
+                db_image=migration_validation.db_image,
+                script_location=str(Path(worktree_path) / migration_validation.script_location),
+                bootstrap_sql=migration_validation.bootstrap_sql,
             )
-            return
+        else:
+            logger.info(
+                "[%s] Skipping migration dry-run for %s — non-orch project with no "
+                "migration_validation config in .iw-orch.json",
+                project_id,
+                item_id,
+            )
+
+    if dry_result is not None and not dry_result.success:
+        batch_item.status = BatchItemStatus.migration_invalid
+        batch_item.notes = f"Phase 1 dry-run failed: {dry_result.message}"
+        # C4: revert WorkItem so it is not orphaned as completed
+        _revert_work_item(db, project_id, item_id)
+        db.commit()
+        compose_path = (
+            Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None
+        )
+        worktree_compose.down(str(batch_item.id), compose_path)
+        _emit_event(
+            db,
+            project_id,
+            "migration_pipeline",
+            item_id,
+            "work_item",
+            f"Phase 1 dry-run failed: {dry_result.message}",
+            {"phase": "dry_run", "success": False, "batch_id": batch_item.batch_id},
+        )
+        logger.warning(
+            "[%s] Phase 1 dry-run failed for %s — batch item %s marked MIGRATION_INVALID",
+            project_id,
+            item_id,
+            batch_item.batch_id,
+        )
+        return
 
     result: subprocess.CompletedProcess[str] | None = None
     conflict_files: list[str] = []  # defined before try so except block can reference
@@ -458,8 +495,10 @@ def _merge_item(
             )
             db.commit()
 
-        # Phase 2: apply migrations to live DB
-        if batch_id_for_apply is not None:
+        # Phase 2: apply migrations to the live orch DB — orch-DB project only.
+        # Other projects own and deploy their own DBs; the orchestrator must never
+        # apply their migrations to the orch DB (get_db_url() points at 5433).
+        if is_orch_db_project and batch_id_for_apply is not None:
             apply_result = run_post_merge_apply(batch_id_for_apply)
             if not apply_result.success and apply_result.revisions_applied:
                 # A migration actually started applying and then failed —

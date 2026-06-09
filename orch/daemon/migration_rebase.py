@@ -372,6 +372,13 @@ def run_pre_merge_rebase(
     Runs inside merge_queue._merge_item's serial critical section, before the
     3-phase migration pipeline (dry_run / apply / rollback).
 
+    ORCH-DB PROJECT ONLY. This rewrites the batch chain root's down_revision onto
+    the orch main head and scans the hard-coded ``orch/db/migrations/versions/``
+    layout, so it is meaningful only for the project that owns the orch DB
+    (iw-ai-core). The merge queue gates the call on
+    ``safe_migrate.manages_orch_db(project_id)``; other projects author their own
+    migration chains and must never have them rewritten here (I-00131).
+
     Returns RebaseResult with success=False on fatal errors (git failure,
     parse error, chain cycle). Exceptions must NOT propagate to merge_queue.
     """

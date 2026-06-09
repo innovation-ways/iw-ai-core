@@ -91,6 +91,9 @@ def migration_rebase_ctx(db_session, tmp_path, chaos_daemon):
         model="minimax",
         worktree_base=".worktrees",
         config={},
+        # This exercises the orch-DB pre-merge rebase, which only runs for the
+        # orch-DB-owning project — opt this synthetic project in (see I-00131).
+        owns_orch_db=True,
     )
 
     return {

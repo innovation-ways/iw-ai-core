@@ -55,11 +55,44 @@ __all__ = [
     "rollback",
     "current_revision",
     "is_live_db_url",
+    "ORCH_DB_PROJECT_ID",
+    "manages_orch_db",
 ]
 
 logger = logging.getLogger(__name__)
 
 MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent / "migrations")
+
+# The single project that owns the global orchestrator DB (port 5433). Only this
+# project's work items run the orch-DB migration pipeline — pre-merge rebase,
+# testcontainer dry-run against ``orch/db/migrations``, and apply-to-live. Every
+# OTHER managed project (iw-rag, innoforge, …) keeps its own Alembic migrations
+# in its own layout and deploys its own DB independently of the orchestrator, so
+# the orchestrator must NOT apply (or rebase) their migrations against the orch
+# DB. See ``manages_orch_db`` for the gate and ``merge_queue._merge_item`` for
+# the call sites. (I-00131: a hard-coded ``orch/db/migrations`` path made the
+# Phase-1 dry-run fail for iw-rag, which keeps migrations under ``alembic/``.)
+ORCH_DB_PROJECT_ID = "iw-ai-core"
+
+
+def manages_orch_db(project_id: str | None) -> bool:
+    """Return True iff this project owns the global orchestrator DB.
+
+    The orch-DB migration pipeline (pre-merge rebase, apply-to-live, rollback)
+    is meaningful only for the project whose migrations ARE the orchestrator's
+    own ``orch/db/migrations`` chain and whose live DB is the orch DB on 5433.
+    For every other managed project the orchestrator only *validates* migrations
+    (a project-configured testcontainer dry-run); it never rebases or applies
+    them. See ``ORCH_DB_PROJECT_ID``.
+
+    Args:
+        project_id: The managed-project identifier (e.g. "iw-rag", "iw-ai-core").
+
+    Returns:
+        True only for the orch-DB-owning project, False otherwise (including None).
+    """
+    return project_id == ORCH_DB_PROJECT_ID
+
 
 _RELEVANT_TABLES = (
     "batch_items",
@@ -114,7 +147,7 @@ def _to_int_batch_id(batch_id: str | int | None) -> int | None:
 # ("iw-ai-core") because the orch DB migrations are global and there is only
 # one orchestrator. The previous hardcoded 'innoForge' value never existed in
 # the projects table, so lock acquisition always raised FK violations.
-_ORCH_MIGRATION_LOCK_PROJECT = "iw-ai-core"
+_ORCH_MIGRATION_LOCK_PROJECT = ORCH_DB_PROJECT_ID
 
 
 # ---------------------------------------------------------------------------

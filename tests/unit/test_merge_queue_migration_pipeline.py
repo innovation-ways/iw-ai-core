@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orch.db.safe_migrate import _to_int_batch_id
+from orch.db.safe_migrate import ORCH_DB_PROJECT_ID, _to_int_batch_id, manages_orch_db
 
 # ---------------------------------------------------------------------------
 # 1. _to_int_batch_id helper
@@ -87,12 +87,22 @@ class TestToIntBatchId:
 # ---------------------------------------------------------------------------
 
 
-def _make_project_config() -> MagicMock:
-    """Return make project config."""
-    from orch.daemon.project_registry import ProjectConfig
+def _make_project_config(
+    project_id: str = ORCH_DB_PROJECT_ID,
+    migration_validation: object | None = None,
+) -> MagicMock:
+    """Return a ProjectConfig for _merge_item tests.
 
+    Defaults to the orch-DB-owning project id so the migration pipeline is
+    exercised; pass a non-orch project_id to drive the skip/validation paths.
+    """
+    from orch.daemon.project_registry import MigrationValidationConfig, ProjectConfig
+
+    assert migration_validation is None or isinstance(
+        migration_validation, MigrationValidationConfig
+    )
     return ProjectConfig(
-        id="test-proj",
+        id=project_id,
         display_name="Test Project",
         repo_root="/repos/test",
         enabled=True,
@@ -100,6 +110,8 @@ def _make_project_config() -> MagicMock:
         model="minimax",
         worktree_base=".worktrees",
         config={},
+        migration_validation=migration_validation,
+        owns_orch_db=manages_orch_db(project_id),
     )
 
 
@@ -231,7 +243,7 @@ class TestMergeItemStringBatchIdInvokesPipeline:
                 is_on_default=True,
             )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="squash ok", stderr="")
-            _merge_item(db, batch_item, "test-proj", project_config)
+            _merge_item(db, batch_item, ORCH_DB_PROJECT_ID, project_config)
 
         return {
             "rebase": mock_rebase,
@@ -337,7 +349,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
-            _merge_item(db, item, "test-proj", _make_project_config())
+            _merge_item(db, item, ORCH_DB_PROJECT_ID, _make_project_config())
 
         mock_rebase.assert_not_called()
 
@@ -369,7 +381,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
-            _merge_item(db, item, "test-proj", _make_project_config())
+            _merge_item(db, item, ORCH_DB_PROJECT_ID, _make_project_config())
 
         mock_dry.assert_not_called()
 
@@ -401,7 +413,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
-            _merge_item(db, item, "test-proj", _make_project_config())
+            _merge_item(db, item, ORCH_DB_PROJECT_ID, _make_project_config())
 
         mock_apply.assert_not_called()
 
@@ -438,7 +450,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
-            _merge_item(db, item, "test-proj", _make_project_config())
+            _merge_item(db, item, ORCH_DB_PROJECT_ID, _make_project_config())
 
         assert item.status == BatchItemStatus.merged
 
@@ -531,7 +543,7 @@ class TestMergeItemRollbackGuard:
                 is_on_default=True,
             )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
-            _merge_item(db, item, "test-proj", _make_project_config())
+            _merge_item(db, item, ORCH_DB_PROJECT_ID, _make_project_config())
 
         return {"rollback": mock_rollback, "item": item}
 
@@ -553,3 +565,197 @@ class TestMergeItemRollbackGuard:
         """Verifies that no rollback on successful apply."""
         result = self._run_merge_item(_make_successful_apply_result())
         result["rollback"].assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 5. manages_orch_db gate — which project owns the orch DB migration pipeline
+# ---------------------------------------------------------------------------
+
+
+class TestManagesOrchDb:
+    """`manages_orch_db` is True only for the orch-DB-owning project.
+
+    The orch migration pipeline (rebase + apply-to-live) keys on this; every
+    other managed project is validation-only. See safe_migrate.ORCH_DB_PROJECT_ID.
+    """
+
+    def test_orch_project_owns_orch_db(self) -> None:
+        """The iw-ai-core project owns the orch DB."""
+        assert manages_orch_db(ORCH_DB_PROJECT_ID) is True
+
+    def test_none_is_false(self) -> None:
+        """A None project id never owns the orch DB."""
+        assert manages_orch_db(None) is False
+
+    @pytest.mark.parametrize(
+        "project_id",
+        ["iw-rag", "innoforge", "Podforger", "cv", "IW Website", "", "IW-AI-CORE"],
+    )
+    def test_non_orch_projects_are_false(self, project_id: str) -> None:
+        """Every non-orch project (and case variants) is validation-only."""
+        assert manages_orch_db(project_id) is False
+
+
+# ---------------------------------------------------------------------------
+# 6. Non-orch projects: rebase + apply are skipped; dry-run is opt-in (I-00131)
+# ---------------------------------------------------------------------------
+
+
+def _make_migration_validation_config(
+    *,
+    script_location: str = "alembic",
+    db_image: str = "paradedb/paradedb:latest",
+    bootstrap_sql: tuple[str, ...] = (),
+) -> object:
+    """Build a MigrationValidationConfig for the non-orch validation tests."""
+    from orch.daemon.project_registry import MigrationValidationConfig
+
+    return MigrationValidationConfig(
+        script_location=script_location,
+        db_image=db_image,
+        bootstrap_sql=bootstrap_sql,
+    )
+
+
+class TestMergeItemNonOrchProjectMigrationPipeline:
+    """Non-orch projects must never run the orch rebase or apply-to-live phases.
+
+    Regression for I-00131: the merge queue ran the orch migration pipeline for
+    iw-rag (a non-orch project that keeps migrations under ``alembic/``). The
+    Phase-1 dry-run was pointed at a hard-coded ``orch/db/migrations`` path that
+    does not exist in iw-rag, so the merge was wrongly marked MIGRATION_INVALID.
+
+    After the fix, for a non-orch project:
+      * the pre-merge rebase is skipped (it would corrupt the project's chain),
+      * the apply-to-live (orch DB) is skipped (the project owns its own DB),
+      * the Phase-1 dry-run runs ONLY when the project opts in via
+        ``migration_validation``, and then with that project's image + dir.
+    """
+
+    def _run_merge_item(
+        self,
+        *,
+        migration_validation: object | None,
+        project_id: str = "iw-rag",
+        worktree_path: str = "/wt/I-00131",
+    ) -> dict[str, MagicMock]:
+        """Run _merge_item for a non-orch project, mocking all side-effects."""
+        from orch.daemon.merge_queue import _merge_item
+
+        item = _make_batch_item(batch_id="BATCH-00145", worktree_path=worktree_path)
+        project_config = _make_project_config(
+            project_id=project_id, migration_validation=migration_validation
+        )
+        db = MagicMock()
+
+        with (
+            patch("orch.daemon.merge_queue.run_pre_merge_rebase") as mock_rebase,
+            patch(
+                "orch.daemon.merge_queue.run_pre_merge_dry_run",
+                return_value=_make_successful_dry_run_result(),
+            ) as mock_dry,
+            patch("orch.daemon.merge_queue.run_post_merge_apply") as mock_apply,
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+            patch("orch.daemon.merge_queue.worktree_compose.down"),
+        ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
+            mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            _merge_item(db, item, project_id, project_config)
+
+        return {"rebase": mock_rebase, "dry_run": mock_dry, "apply": mock_apply, "item": item}
+
+    def test_rebase_skipped_for_non_orch_project(self) -> None:
+        """The orch down_revision-rewriting rebase never runs for a non-orch project."""
+        mocks = self._run_merge_item(migration_validation=None)
+        mocks["rebase"].assert_not_called()
+
+    def test_apply_skipped_for_non_orch_project(self) -> None:
+        """The apply-to-live-orch-DB phase never runs for a non-orch project."""
+        mocks = self._run_merge_item(migration_validation=None)
+        mocks["apply"].assert_not_called()
+
+    def test_dry_run_skipped_when_not_opted_in(self) -> None:  # noqa: assertion-scanner
+        """Without migration_validation config, the dry-run is skipped (I-00131 fix)."""
+        mocks = self._run_merge_item(migration_validation=None)
+        mocks["dry_run"].assert_not_called()
+
+    def test_merge_succeeds_for_non_orch_project_without_validation(self) -> None:
+        """The I-00131 case: merge completes (status=merged), no MIGRATION_INVALID."""
+        from orch.db.models import BatchItemStatus
+
+        mocks = self._run_merge_item(migration_validation=None)
+        assert mocks["item"].status == BatchItemStatus.merged
+
+    def test_dry_run_runs_with_project_image_and_dir_when_opted_in(self) -> None:
+        """Opted-in projects validate with their own image + migrations dir."""
+        cfg = _make_migration_validation_config(
+            script_location="alembic",
+            db_image="paradedb/paradedb:latest",
+            bootstrap_sql=("CREATE EXTENSION IF NOT EXISTS vector",),
+        )
+        mocks = self._run_merge_item(migration_validation=cfg, worktree_path="/wt/I-00131")
+        mocks["dry_run"].assert_called_once()
+        kwargs = mocks["dry_run"].call_args.kwargs
+        assert kwargs["db_image"] == "paradedb/paradedb:latest"
+        assert kwargs["script_location"] == "/wt/I-00131/alembic"
+        assert kwargs["bootstrap_sql"] == ("CREATE EXTENSION IF NOT EXISTS vector",)
+
+    def test_rebase_and_apply_still_skipped_when_opted_in(self) -> None:
+        """Opting into validation does NOT enable the orch rebase/apply phases."""
+        cfg = _make_migration_validation_config()
+        mocks = self._run_merge_item(migration_validation=cfg)
+        mocks["rebase"].assert_not_called()
+        mocks["apply"].assert_not_called()
+
+    def test_merge_succeeds_when_opted_in_dry_run_passes(self) -> None:
+        """A passing project dry-run lets the merge complete normally."""
+        from orch.db.models import BatchItemStatus
+
+        cfg = _make_migration_validation_config()
+        mocks = self._run_merge_item(migration_validation=cfg)
+        assert mocks["item"].status == BatchItemStatus.merged
+
+    def test_failed_project_dry_run_marks_migration_invalid(self) -> None:
+        """A failing project dry-run still blocks the merge (validation has teeth)."""
+        from orch.daemon.merge_queue import _merge_item
+        from orch.daemon.migration_pipeline import PipelineResult
+        from orch.db.models import BatchItemStatus
+
+        item = _make_batch_item(batch_id="BATCH-00145", worktree_path="/wt/I-00131")
+        cfg = _make_migration_validation_config()
+        project_config = _make_project_config(project_id="iw-rag", migration_validation=cfg)
+        db = MagicMock()
+        failed = PipelineResult(
+            phase="dry_run",
+            success=False,
+            final_batch_state="MIGRATION_INVALID",
+            frozen=False,
+            message="relation already exists",
+        )
+
+        with (
+            patch("orch.daemon.merge_queue.run_pre_merge_rebase") as mock_rebase,
+            patch("orch.daemon.merge_queue.run_pre_merge_dry_run", return_value=failed),
+            patch("orch.daemon.merge_queue.run_post_merge_apply") as mock_apply,
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+            patch("orch.daemon.merge_queue.worktree_compose.down"),
+            patch("orch.daemon.merge_queue._revert_work_item"),
+        ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main", default_branch="main", is_on_default=True
+            )
+            mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            _merge_item(db, item, "iw-rag", project_config)
+
+        assert item.status == BatchItemStatus.migration_invalid
+        # The failing validation must short-circuit BEFORE the squash-merge/apply.
+        mock_apply.assert_not_called()
+        mock_rebase.assert_not_called()

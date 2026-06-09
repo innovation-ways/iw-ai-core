@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 from orch.daemon.scope_overlap import DEFAULT_ALLOW_PATTERNS, DEFAULT_BLOCK_PATTERNS
+from orch.db.safe_migrate import manages_orch_db
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,54 @@ _AI_ASSISTANT_RUNTIMES = {"opencode", "pi"}
 # the corresponding DB columns by design — adding a 4th runtime later stays a
 # one-line code change instead of a schema migration.
 _VALID_CLI_TOOLS = {"opencode", "claude", "pi"}
+
+
+# ---------------------------------------------------------------------------
+# MigrationValidationConfig — per-project pre-merge migration dry-run settings
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MigrationValidationConfig:
+    """How to validate a non-orch project's Alembic migrations before merge.
+
+    The orchestrator's 3-phase migration pipeline (rebase → dry-run → apply) is
+    hard-wired to the orchestrator's own DB and ``orch/db/migrations`` layout and
+    runs only for the orch-DB-owning project (see ``safe_migrate.manages_orch_db``).
+    Every OTHER project keeps its migrations in its own layout and deploys its own
+    DB, so the orchestrator only *validates* them: spin a throwaway testcontainer
+    from the project's own DB image, run ``alembic upgrade head`` against the
+    project's own migrations dir, then tear down. It never applies to a live DB.
+
+    Read from ``.iw-orch.json`` under the ``migration_validation`` key. When the
+    key is absent the project opts out and the pre-merge dry-run is skipped
+    entirely (a no-op success) — merges proceed without migration validation.
+
+    LIMITATION (in-process): the dry-run runs alembic *inside the orchestrator
+    process*, so it only works for projects whose ``alembic/env.py`` does NOT
+    import the project's own application package (the orchestrator venv has only
+    iw-ai-core installed). Projects whose env.py does ``import <app_pkg>`` (e.g.
+    iw-rag's ``from iw_rag.storage.schema import metadata``) cannot be validated
+    this way — they should leave this key absent and rely on their own
+    CI/deploy migration checks. A future enhancement could shell out to the
+    project's own toolchain in its worktree venv, but for heavy-dependency
+    projects that is operationally expensive (full ``uv sync`` per merge). (I-00131.)
+
+    Attributes:
+        script_location: Alembic migrations directory, RELATIVE to the project
+            repo root (e.g. ``"alembic"`` for iw-rag). Joined onto each worktree
+            path at merge time. Must not be absolute or escape the worktree.
+        db_image: Docker image for the throwaway dry-run Postgres (e.g.
+            ``"paradedb/paradedb:latest"``). Must be a Postgres-compatible image
+            exposing 5432 with the standard user/password env contract.
+        bootstrap_sql: SQL statements executed on the fresh container BEFORE
+            ``alembic upgrade head`` (e.g. ``CREATE EXTENSION`` for extensions the
+            migrations assume pre-exist). Each entry runs as its own statement.
+    """
+
+    script_location: str
+    db_image: str = "postgres:15-alpine"
+    bootstrap_sql: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +169,17 @@ class ProjectConfig:
     # as allowed_paths. Empty list means feature disabled. Read from
     # projects.toml: [projects.<id>.always_in_scope] paths = [...].
     always_in_scope_paths: list[str] = field(default_factory=list)
+    # Pre-merge migration validation for NON-orch projects. None means the
+    # project opts out (no dry-run; merges proceed without migration validation).
+    # The orch-DB-owning project (iw-ai-core) ignores this field — it always runs
+    # the full orch migration pipeline. Read from .iw-orch.json migration_validation.
+    migration_validation: MigrationValidationConfig | None = None
+    # True only for the project that owns the global orchestrator DB (iw-ai-core).
+    # Derived from the id in _build_project_config (see safe_migrate.manages_orch_db);
+    # the merge queue gates the orch-DB migration pipeline (pre-merge rebase +
+    # apply-to-live) on this. Defaults False so any other construction path (incl.
+    # test fixtures) is validation-only unless it explicitly opts in. (I-00131.)
+    owns_orch_db: bool = False
 
     @property
     def working_dir(self) -> str:
@@ -316,6 +376,11 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     else:
         always_in_scope_paths = []
 
+    # migration_validation — optional per-project pre-merge dry-run config.
+    migration_validation = _parse_migration_validation(
+        project_id, iw_config.get("migration_validation")
+    )
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -338,6 +403,99 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         auto_amend_allow_patterns=auto_amend_allow_patterns,
         auto_amend_max_paths=auto_amend_max_paths,
         always_in_scope_paths=always_in_scope_paths,
+        migration_validation=migration_validation,
+        owns_orch_db=manages_orch_db(project_id),
+    )
+
+
+def _parse_migration_validation(project_id: str, raw: object) -> MigrationValidationConfig | None:
+    """Parse the optional ``migration_validation`` block from .iw-orch.json.
+
+    Returns None (opt-out → no pre-merge dry-run) when the block is absent or
+    malformed. Logs a warning and returns None on any validation error so a bad
+    entry never prevents the project from loading or blocks its merges.
+
+    Validation rules:
+      - raw absent/None        → None (opt-out, silent).
+      - raw not a dict         → warn, None.
+      - script_location missing/empty/non-str → warn, None (cannot dry-run).
+      - script_location absolute or containing '..' → warn, None (must stay
+        inside the worktree; it is joined onto the worktree path at merge time).
+      - db_image non-str       → warn, fall back to the postgres:15-alpine default.
+      - bootstrap_sql non-list or with non-str items → warn, drop offending items.
+
+    Args:
+        project_id: Project identifier, for log context.
+        raw: The raw ``migration_validation`` value from .iw-orch.json.
+
+    Returns:
+        A validated MigrationValidationConfig, or None when the project opts out.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Project %r has non-dict 'migration_validation' value %r — ignoring",
+            project_id,
+            raw,
+        )
+        return None
+
+    script_location = raw.get("script_location")
+    if not isinstance(script_location, str) or not script_location.strip():
+        logger.warning(
+            "Project %r 'migration_validation.script_location' is missing or not a "
+            "non-empty string (%r) — migration validation disabled",
+            project_id,
+            script_location,
+        )
+        return None
+    script_location = script_location.strip()
+    if Path(script_location).is_absolute() or ".." in Path(script_location).parts:
+        logger.warning(
+            "Project %r 'migration_validation.script_location' %r must be a relative "
+            "path inside the repo (no leading '/' or '..') — migration validation disabled",
+            project_id,
+            script_location,
+        )
+        return None
+
+    raw_image = raw.get("db_image", "postgres:15-alpine")
+    if not isinstance(raw_image, str) or not raw_image.strip():
+        logger.warning(
+            "Project %r 'migration_validation.db_image' %r is not a non-empty string "
+            "— defaulting to postgres:15-alpine",
+            project_id,
+            raw_image,
+        )
+        db_image = "postgres:15-alpine"
+    else:
+        db_image = raw_image.strip()
+
+    raw_bootstrap = raw.get("bootstrap_sql", [])
+    bootstrap_sql: list[str] = []
+    if isinstance(raw_bootstrap, list):
+        for stmt in raw_bootstrap:
+            if isinstance(stmt, str) and stmt.strip():
+                bootstrap_sql.append(stmt)
+            else:
+                logger.warning(
+                    "Project %r 'migration_validation.bootstrap_sql' entry %r is not a "
+                    "non-empty string — ignoring it",
+                    project_id,
+                    stmt,
+                )
+    elif raw_bootstrap not in (None, []):
+        logger.warning(
+            "Project %r 'migration_validation.bootstrap_sql' %r is not a list — ignoring",
+            project_id,
+            raw_bootstrap,
+        )
+
+    return MigrationValidationConfig(
+        script_location=script_location,
+        db_image=db_image,
+        bootstrap_sql=tuple(bootstrap_sql),
     )
 
 

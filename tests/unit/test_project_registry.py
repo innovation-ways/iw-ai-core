@@ -463,3 +463,109 @@ def test_auto_merge_non_bool_warns_and_defaults_to_true(tmp_path: Path, caplog) 
     assert projects["proj"].auto_merge_default is True
     assert any("non-bool 'auto_merge'" in record.message for record in caplog.records)
     assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# migration_validation parsing (_parse_migration_validation)
+# ---------------------------------------------------------------------------
+
+
+class TestParseMigrationValidation:
+    """`_parse_migration_validation` turns the .iw-orch.json block into config.
+
+    Opt-in only: absent/malformed → None (project skips pre-merge validation),
+    never raising so a bad entry cannot stop the project from loading (I-00131).
+    """
+
+    def test_absent_returns_none(self) -> None:
+        """No migration_validation key → opt-out (None)."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        assert _parse_migration_validation("p", None) is None
+
+    def test_non_dict_returns_none(self) -> None:
+        """A non-dict value is rejected → None."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        assert _parse_migration_validation("p", ["alembic"]) is None
+
+    def test_valid_full_block(self) -> None:
+        """A complete block parses into MigrationValidationConfig."""
+        from orch.daemon.project_registry import (
+            MigrationValidationConfig,
+            _parse_migration_validation,
+        )
+
+        cfg = _parse_migration_validation(
+            "iw-rag",
+            {
+                "script_location": "alembic",
+                "db_image": "paradedb/paradedb:latest",
+                "bootstrap_sql": ["CREATE EXTENSION IF NOT EXISTS vector"],
+            },
+        )
+        assert cfg == MigrationValidationConfig(
+            script_location="alembic",
+            db_image="paradedb/paradedb:latest",
+            bootstrap_sql=("CREATE EXTENSION IF NOT EXISTS vector",),
+        )
+
+    def test_db_image_defaults_when_omitted(self) -> None:
+        """db_image defaults to postgres:15-alpine when not provided."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        cfg = _parse_migration_validation("p", {"script_location": "alembic"})
+        assert cfg is not None
+        assert cfg.db_image == "postgres:15-alpine"
+        assert cfg.bootstrap_sql == ()
+
+    def test_missing_script_location_returns_none(self) -> None:
+        """script_location is required — without it, validation is disabled."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        assert _parse_migration_validation("p", {"db_image": "postgres:15"}) is None
+
+    def test_absolute_script_location_rejected(self) -> None:
+        """An absolute script_location is rejected (must stay inside the worktree)."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        assert _parse_migration_validation("p", {"script_location": "/etc/passwd"}) is None
+
+    def test_parent_traversal_script_location_rejected(self) -> None:
+        """A '..' traversal in script_location is rejected."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        assert _parse_migration_validation("p", {"script_location": "../escape"}) is None
+
+    def test_non_string_bootstrap_entries_dropped(self) -> None:
+        """Non-string bootstrap_sql entries are dropped, valid ones kept."""
+        from orch.daemon.project_registry import _parse_migration_validation
+
+        cfg = _parse_migration_validation(
+            "p",
+            {"script_location": "alembic", "bootstrap_sql": ["CREATE EXTENSION x", 7, ""]},
+        )
+        assert cfg is not None
+        assert cfg.bootstrap_sql == ("CREATE EXTENSION x",)
+
+    def test_wired_through_build_project_config(self, tmp_path: Path) -> None:
+        """End-to-end: a project's .iw-orch.json block reaches ProjectConfig."""
+        make_project_dir(
+            tmp_path,
+            "iw-rag",
+            {
+                "migration_validation": {
+                    "script_location": "alembic",
+                    "db_image": "paradedb/paradedb:latest",
+                }
+            },
+        )
+        toml_file = make_toml_file(
+            tmp_path, {"iw-rag": {"repo_root": str(tmp_path / "iw-rag"), "enabled": True}}
+        )
+        projects = load_projects_toml(toml_file)
+
+        mv = projects["iw-rag"].migration_validation
+        assert mv is not None
+        assert mv.script_location == "alembic"
+        assert mv.db_image == "paradedb/paradedb:latest"
