@@ -111,10 +111,14 @@ fi
 # ---------------------------------------------------------------------------
 # Step 4b: Install frontend dependencies (if present)
 # ---------------------------------------------------------------------------
-if [[ -d "$WORKTREE_DIR/frontend" ]]; then
+# Gate on package.json, not just the directory: some projects (e.g. a Chainlit
+# Python frontend) have a frontend/ dir with no Node project, and `npm install`
+# aborts with ENOENT (exit 254), failing worktree setup. Keep npm's output
+# visible so a real install failure isn't swallowed by --silent.
+if [[ -f "$WORKTREE_DIR/frontend/package.json" ]]; then
     echo "Installing frontend dependencies..." >&2
     cd "$WORKTREE_DIR/frontend"
-    npm install --silent >&2
+    npm install --no-audit --no-fund >&2
 fi
 
 # ---------------------------------------------------------------------------
