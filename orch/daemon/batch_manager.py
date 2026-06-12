@@ -2120,7 +2120,10 @@ _PI_WORKTREE_PIN_TEXT = (
     "sibling path on disk; it is NOT your project. Ignore it entirely and use "
     "paths relative to your working directory."
 )
-_PI_NARRATION_GUARD_SCRIPT = "executor/pi_narration_guard.py"
+# Absolute path (via _EXECUTOR_DIR) so the guard resolves regardless of the
+# step's cwd. A worktree-relative "executor/..." only existed in iw-ai-core's
+# OWN worktree, so every other project's Pi step crashed (file not found).
+_PI_NARRATION_GUARD_SCRIPT = str(_EXECUTOR_DIR / "pi_narration_guard.py")
 
 
 def _pi_worktree_isolation_args(worktree_path: str) -> str:
