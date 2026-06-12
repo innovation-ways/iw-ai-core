@@ -4,6 +4,8 @@ Cascade order (per F-00081 design):
   1. WorkflowStep.agent_runtime_option_id  (step override — most specific)
   2. WorkItem.agent_runtime_option_id      (item override)
   3. projects.toml (cli_tool, model) lookup in agent_runtime_options catalogue
+     — fires ONLY when the project explicitly pins a cli_tool. An un-pinned
+     project carries cli_tool=None and this tier is skipped.
   4. agent_runtime_options.is_default=true row (catalogue default — guaranteed by migration)
 
 Disabled rows in the chain are skipped with a warning log, falling through to
@@ -89,19 +91,29 @@ def resolve_runtime(
             )
         # None → fall through
 
-    # Project.toml (cli_tool, model) lookup
-    cli_tool = getattr(project, "cli_tool", "opencode")
-    model = getattr(project, "model", "minimax/MiniMax-M3")
-
-    option = _load_option_by_cli_model(session, cli_tool, model)
-    if option is not None:
+    # Project.toml (cli_tool, model) lookup — only when the project EXPLICITLY
+    # pins a runtime. An un-pinned project carries cli_tool=None (see
+    # project_registry._build_project_config), so this tier is skipped and
+    # resolution falls through to the catalogue default below. Defaulting an
+    # absent cli_tool to a literal here would silently shadow the catalogue
+    # default (the "flip default to pi" migration) for every un-pinned project.
+    cli_tool = getattr(project, "cli_tool", None)
+    model = getattr(project, "model", None)
+    if cli_tool and model:
+        option = _load_option_by_cli_model(session, cli_tool, model)
+        if option is not None:
+            logger.debug(
+                "Runtime resolved: project.toml lookup (%s, %s) → id=%d",
+                cli_tool,
+                model,
+                option.id,
+            )
+            return option
         logger.debug(
-            "Runtime resolved: project.toml lookup (%s, %s) → id=%d",
+            "Project pin (%s, %s) matched no enabled option — using catalogue default",
             cli_tool,
             model,
-            option.id,
         )
-        return option
 
     # Fallback: catalogue is_default=true row
     option = _load_default(session)

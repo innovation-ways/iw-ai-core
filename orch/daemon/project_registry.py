@@ -110,7 +110,11 @@ class ProjectConfig:
     display_name: str
     repo_root: str
     enabled: bool
-    cli_tool: str
+    # Explicit runtime pin from projects.toml / .iw-orch.json. None means the
+    # project pins NO runtime — the agent-runtime resolver then skips the
+    # projects.toml-lookup tier and falls through to the catalogue default
+    # (agent_runtime_options.is_default=true). See resolver.resolve_runtime.
+    cli_tool: str | None
     model: str
     worktree_base: str
     config: dict[str, Any]  # full .iw-orch.json content
@@ -235,8 +239,11 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     display_name: str = entry.get("display_name") or iw_config.get("display_name") or project_id
     # cli_tool: projects.toml entry takes precedence; .iw-orch.json is fallback
     # for backwards compat. .iw-orch.json ONLY supplies cli_tool (not model).
-    cli_tool: str = entry.get("cli_tool") or iw_config.get("cli_tool", "opencode")
-    if cli_tool not in _VALID_CLI_TOOLS:
+    # When NEITHER pins a cli_tool, it stays None so the runtime resolver skips
+    # the projects.toml-lookup tier and uses the catalogue default (is_default
+    # row) — instead of a hardcoded "opencode" that would shadow that default.
+    cli_tool: str | None = entry.get("cli_tool") or iw_config.get("cli_tool") or None
+    if cli_tool is not None and cli_tool not in _VALID_CLI_TOOLS:
         logger.warning(
             "Project %r has invalid cli_tool %r (expected one of %s) — skipping",
             project_id,

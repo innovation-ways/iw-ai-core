@@ -116,21 +116,25 @@ def test_load_display_name_fallback_to_project_id(tmp_path: Path) -> None:
 
 
 def test_load_cli_tool_from_iw_orch_json(tmp_path: Path) -> None:
-    """cli_tool is read from .iw-orch.json, defaulting to 'opencode'."""
-    repo_opencode = make_project_dir(tmp_path, "proj1")
+    """cli_tool is read from .iw-orch.json; un-pinned projects stay None.
+
+    None (no pin) lets the runtime resolver fall through to the catalogue
+    default rather than a hardcoded "opencode" that would shadow it.
+    """
+    repo_unpinned = make_project_dir(tmp_path, "proj1")
     repo_claude = make_project_dir(tmp_path, "proj2", iw_config={"cli_tool": "claude"})
 
     toml_file = make_toml_file(
         tmp_path,
         {
-            "proj1": {"repo_root": str(repo_opencode)},
+            "proj1": {"repo_root": str(repo_unpinned)},
             "proj2": {"repo_root": str(repo_claude)},
         },
     )
 
     projects = load_projects_toml(toml_file)
 
-    assert projects["proj1"].cli_tool == "opencode"
+    assert projects["proj1"].cli_tool is None
     assert projects["proj2"].cli_tool == "claude"
 
 
@@ -215,9 +219,9 @@ def test_invalid_iw_orch_json_uses_defaults(tmp_path: Path) -> None:
 
     projects = load_projects_toml(toml_file)
 
-    # Project still loads — just with defaults
+    # Project still loads — just with defaults (no cli_tool pin → None)
     assert "broken" in projects
-    assert projects["broken"].cli_tool == "opencode"
+    assert projects["broken"].cli_tool is None
 
 
 def test_invalid_toml_syntax_returns_empty(tmp_path: Path) -> None:

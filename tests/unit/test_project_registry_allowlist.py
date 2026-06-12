@@ -97,18 +97,17 @@ def test_invalid_cli_tool_typo_skipped(tmp_path: Path, caplog: pytest.LogCapture
 
 
 # ---------------------------------------------------------------------------
-# Missing cli_tool — fall back to the historical ``opencode`` default.
+# Missing cli_tool — stays None (no pin) so the resolver uses the catalogue default.
 # ---------------------------------------------------------------------------
 
 
-def test_missing_cli_tool_defaults_to_opencode(tmp_path: Path) -> None:
-    """Entries without a ``cli_tool`` key fall back to ``opencode`` — the
-    existing behaviour from before the allowlist landed.
+def test_missing_cli_tool_is_none(tmp_path: Path) -> None:
+    """Entries without a ``cli_tool`` key load with ``cli_tool=None`` (no pin).
 
-    This guards against a regression where the allowlist would reject ``None``
-    or empty ``cli_tool`` and break every currently-registered project (none
-    of which set ``cli_tool`` in ``projects.toml`` at the time the allowlist
-    was added).
+    None must be ACCEPTED by the allowlist (not rejected) — a project that
+    pins nothing is valid and falls through to the catalogue default at
+    resolution time, instead of being hardcoded to ``opencode`` which would
+    shadow the catalogue's is_default row.
     """
     repo_root = _make_repo_root(tmp_path, "p_default")
     result = _build_project_config(
@@ -116,7 +115,7 @@ def test_missing_cli_tool_defaults_to_opencode(tmp_path: Path) -> None:
         entry={"repo_root": str(repo_root)},  # no cli_tool key
     )
     assert result is not None
-    assert result.cli_tool == "opencode"
+    assert result.cli_tool is None
 
 
 # ---------------------------------------------------------------------------

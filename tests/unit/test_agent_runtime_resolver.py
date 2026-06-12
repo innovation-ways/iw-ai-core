@@ -19,7 +19,7 @@ import pytest
 class FakeProjectConfig:
     """Minimal ProjectConfig for resolver tests."""
 
-    def __init__(self, cli_tool: str = "opencode", model: str = "minimax") -> None:
+    def __init__(self, cli_tool: str | None = "opencode", model: str | None = "minimax") -> None:
         self.cli_tool = cli_tool
         self.model = model
 
@@ -301,3 +301,65 @@ def test_resolver_project_pair_not_in_catalogue_warns_and_falls_back(
         # No warning expected here — the project.toml lookup returns None silently,
         # falling through to the catalogue default. The warning is emitted at project
         # registration time in project_registry.py, not at runtime resolution.
+
+
+def test_resolver_unpinned_project_skips_lookup_uses_catalogue_default(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A project that pins NO runtime (cli_tool/model None) must skip the
+    projects.toml-lookup tier entirely and fall through to the catalogue
+    default (is_default=true).
+
+    Regression: previously the resolver defaulted an absent cli_tool to the
+    literal "opencode", which silently shadowed the catalogue default (the
+    "flip default to pi" migration) for every un-pinned project.
+    """
+    from orch.agent_runtime.resolver import resolve_runtime
+
+    opt_pi = _make_option(option_id=7, cli_tool="pi", model="minimax/MiniMax-M3", is_default=True)
+
+    with (
+        patch("orch.agent_runtime.resolver._load_option") as mock_load,
+        patch("orch.agent_runtime.resolver._load_option_by_cli_model") as mock_load_by_pair,
+        patch("orch.agent_runtime.resolver._load_default") as mock_load_default,
+    ):
+        mock_load.return_value = None
+        mock_load_default.return_value = opt_pi
+
+        step = FakeWorkflowStep(agent_runtime_option_id=None)
+        item = FakeWorkItem(agent_runtime_option_id=None)
+        project = FakeProjectConfig(cli_tool=None, model=None)  # un-pinned
+
+        result = resolve_runtime(MagicMock(), step=step, item=item, project=project)
+
+        assert result.id == 7
+        assert result.is_default is True
+        # The projects.toml-lookup tier must be skipped — never queried.
+        mock_load_by_pair.assert_not_called()
+
+
+def test_resolver_missing_cli_tool_attr_skips_lookup(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A project object lacking cli_tool/model altogether (e.g. None project on
+    a projects.toml read error) skips the lookup tier instead of defaulting to
+    "opencode"."""
+    from orch.agent_runtime.resolver import resolve_runtime
+
+    opt_pi = _make_option(option_id=7, cli_tool="pi", model="minimax/MiniMax-M3", is_default=True)
+
+    with (
+        patch("orch.agent_runtime.resolver._load_option") as mock_load,
+        patch("orch.agent_runtime.resolver._load_option_by_cli_model") as mock_load_by_pair,
+        patch("orch.agent_runtime.resolver._load_default") as mock_load_default,
+    ):
+        mock_load.return_value = None
+        mock_load_default.return_value = opt_pi
+
+        step = FakeWorkflowStep(agent_runtime_option_id=None)
+        item = FakeWorkItem(agent_runtime_option_id=None)
+
+        result = resolve_runtime(MagicMock(), step=step, item=item, project=None)
+
+        assert result.id == 7
+        mock_load_by_pair.assert_not_called()
