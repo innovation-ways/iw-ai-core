@@ -563,10 +563,50 @@ _FIXTURE_APPLY_TIMEOUT_SEC = 120
 _E2E_DASHBOARD_SERVICE = "e2e-dashboard"
 
 
+def fixture_apply_service(project_config: ProjectConfig) -> str:
+    """Resolve the docker compose service name to exec into for per-item fixtures.
+
+    Reads ``browser_verification.fixture_apply_service`` from the project's
+    ``.iw-orch.json`` (the same config the daemon already parses for
+    browser_verification). Falls back to :data:`_E2E_DASHBOARD_SERVICE`
+    (``"e2e-dashboard"``) when the key is absent, empty, or not a non-empty
+    string — so the default behaviour is byte-for-byte identical to what
+    it was before this knob existed.
+
+    Per-project opt-in lives at the top level of the ``browser_verification``
+    block, e.g.:
+
+        {
+            "browser_verification": {
+                "env_up_command": "make e2e-up",
+                "fixture_apply_service": "api"
+            }
+        }
+
+    The service name is sourced from trusted server-side project config; it
+    is intentionally NOT user input and the docker compose exec is not run
+    via ``shell=True``.
+
+    Args:
+        project_config: The project's loaded config (must have a
+            ``config`` dict that may contain a ``browser_verification`` block).
+
+    Returns:
+        The service name to target via ``docker compose exec -T <name>``.
+        Always a non-empty string.
+    """
+    bv_cfg = project_config.config.get("browser_verification") or {}
+    raw = bv_cfg.get("fixture_apply_service") if isinstance(bv_cfg, dict) else None
+    if isinstance(raw, str) and raw:
+        return raw
+    return _E2E_DASHBOARD_SERVICE
+
+
 def _apply_per_item_fixtures(
     item_id: str,
     compose_project_name: str,
     worktree_path: str,
+    service_name: str = _E2E_DASHBOARD_SERVICE,
 ) -> None:
     """Run ``scripts/e2e_apply_item_fixtures.py <item_id>`` inside the E2E container.
 
@@ -592,6 +632,11 @@ def _apply_per_item_fixtures(
         worktree_path: Absolute path to the worktree root; used as CWD for
             ``docker compose exec`` so relative bind-mount paths resolve
             correctly.
+        service_name: Docker compose service name to exec into. Defaults to
+            :data:`_E2E_DASHBOARD_SERVICE` (``"e2e-dashboard"``), matching
+            the historical hardcoded value. Override per-project via
+            ``browser_verification.fixture_apply_service`` in
+            ``.iw-orch.json`` — see :func:`fixture_apply_service`.
 
     Raises:
         RuntimeError: When the fixture script exits non-zero or times out.
@@ -618,9 +663,10 @@ def _apply_per_item_fixtures(
         return
 
     logger.info(
-        "[%s] applying %d per-item fixture(s) via docker compose exec",
+        "[%s] applying %d per-item fixture(s) via docker compose exec into %s",
         item_id,
         len(fixture_files),
+        service_name,
     )
 
     cmd = [
@@ -630,7 +676,7 @@ def _apply_per_item_fixtures(
         compose_project_name,
         "exec",
         "-T",  # disable pseudo-TTY — stdout/stderr are captured by subprocess
-        _E2E_DASHBOARD_SERVICE,
+        service_name,
         "uv",
         "run",
         "python",

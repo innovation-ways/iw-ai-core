@@ -18,6 +18,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from orch.daemon.browser_env import (
+    _E2E_DASHBOARD_SERVICE,
+    _apply_per_item_fixtures,
     _capture_crashed_container_logs,
     _compute_port_offset,
     _is_port_free,
@@ -26,6 +28,7 @@ from orch.daemon.browser_env import (
     _save_persisted_offset,
     _state_file_path,
     allocate_browser_env,
+    fixture_apply_service,
     is_browser_verification_step,
     render_prompt_substitutions,
     resolve_browser_env,
@@ -395,25 +398,25 @@ def test_run_env_up_hook_exception_returns_false(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_env_down_hook_no_config_is_noop(tmp_path: Path) -> None:  # noqa: assertion-scanner
+def test_run_env_down_hook_no_config_is_noop(tmp_path: Path) -> None:  # noqa: E501  # assertion-scanner
     """No env_down_command → silently does nothing."""
     pc = make_project_config(bv_cfg={})
     run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
 
 
-def test_run_env_down_hook_success(tmp_path: Path) -> None:  # noqa: assertion-scanner
+def test_run_env_down_hook_success(tmp_path: Path) -> None:  # noqa: E501  # assertion-scanner
     """Verifies that run env down hook success."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "/bin/true"})
     run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
 
 
-def test_run_env_down_hook_nonzero_exit_does_not_raise(tmp_path: Path) -> None:  # noqa: assertion-scanner
+def test_run_env_down_hook_nonzero_exit_does_not_raise(tmp_path: Path) -> None:  # noqa: E501  # assertion-scanner
     """Non-zero exit from env_down command → WARNING logged, no exception."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "/bin/false"})
     run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
 
 
-def test_run_env_down_hook_timeout_does_not_raise(tmp_path: Path) -> None:  # noqa: assertion-scanner
+def test_run_env_down_hook_timeout_does_not_raise(tmp_path: Path) -> None:  # noqa: E501  # assertion-scanner
     """Verifies that run env down hook timeout does not raise."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "sleep 9999"})
     with patch(
@@ -423,7 +426,7 @@ def test_run_env_down_hook_timeout_does_not_raise(tmp_path: Path) -> None:  # no
         run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
 
 
-def test_run_env_down_hook_exception_does_not_raise(tmp_path: Path) -> None:  # noqa: assertion-scanner
+def test_run_env_down_hook_exception_does_not_raise(tmp_path: Path) -> None:  # noqa: E501  # assertion-scanner
     """Verifies that run env down hook exception does not raise."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "make down"})
     with patch("orch.daemon.browser_env.subprocess.run", side_effect=OSError("docker not found")):
@@ -684,3 +687,247 @@ def test_i00052_capture_crashed_container_logs_deduplicates() -> None:
         result = _capture_crashed_container_logs(compose_log)
     mock_run.assert_called_once()
     assert "foo-dashboard-1" in result
+
+
+# ---------------------------------------------------------------------------
+# CR-00100 — fixture_apply_service resolver
+# ---------------------------------------------------------------------------
+
+
+def test_fixture_apply_service_default_when_no_browser_verification_block() -> None:
+    """Resolver returns the default when no browser_verification block is configured."""
+    pc = make_project_config(bv_cfg=None)
+    assert fixture_apply_service(pc) == _E2E_DASHBOARD_SERVICE
+    assert fixture_apply_service(pc) == "e2e-dashboard"
+
+
+def test_fixture_apply_service_default_when_key_missing() -> None:
+    """Verifies the resolver falls back to the default when the key is absent from the block."""
+    pc = make_project_config(bv_cfg={"env_up_command": "make e2e-up"})
+    assert fixture_apply_service(pc) == "e2e-dashboard"
+
+
+def test_fixture_apply_service_returns_configured_value() -> None:
+    """Verifies the resolver returns the configured value when present."""
+    bv_cfg = {"env_up_command": "make e2e-up", "fixture_apply_service": "api"}
+    pc = make_project_config(bv_cfg=bv_cfg)
+    assert fixture_apply_service(pc) == "api"
+
+
+def test_fixture_apply_service_falls_back_when_empty_string() -> None:
+    """An empty string is treated as unset and falls back to the default."""
+    bv_cfg = {"env_up_command": "make e2e-up", "fixture_apply_service": ""}
+    pc = make_project_config(bv_cfg=bv_cfg)
+    assert fixture_apply_service(pc) == "e2e-dashboard"
+
+
+def test_fixture_apply_service_falls_back_when_non_string() -> None:
+    """Non-string values (e.g. int, list, bool) fall back to the default."""
+    for bad in (42, True, ["api"], {"name": "api"}, None):
+        bv_cfg = {"env_up_command": "make e2e-up", "fixture_apply_service": bad}
+        pc = make_project_config(bv_cfg=bv_cfg)
+        assert fixture_apply_service(pc) == "e2e-dashboard", f"unexpected for {bad!r}"
+
+
+# ---------------------------------------------------------------------------
+# CR-00100 — _apply_per_item_fixtures uses the configured service name
+# ---------------------------------------------------------------------------
+
+
+def _write_fixtures(worktree: Path, item_id: str) -> None:
+    """Create a one-fixture e2e_fixtures dir so the apply path actually shells out."""
+    fx_dir = worktree / "ai-dev" / "active" / item_id / "e2e_fixtures"
+    fx_dir.mkdir(parents=True, exist_ok=True)
+    (fx_dir / "01_seed.py").write_text("def seed(db):  # noqa: ARG001\n    pass\n")
+
+
+def test_apply_per_item_fixtures_default_uses_e2e_dashboard_service(tmp_path: Path) -> None:
+    """Default service_name is _E2E_DASHBOARD_SERVICE ('e2e-dashboard')."""
+    item_id = "F-00099"
+    _write_fixtures(tmp_path, item_id)
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        _apply_per_item_fixtures(item_id, "iw-ai-core-e2e-f00099", str(tmp_path))
+    assert mock_run.call_count == 1
+    argv = mock_run.call_args[0][0]
+    # The service name appears between '-T' and 'uv'.
+    t_idx = argv.index("-T")
+    assert argv[t_idx + 1] == "e2e-dashboard"
+
+
+def test_apply_per_item_fixtures_uses_overridden_service_name(tmp_path: Path) -> None:
+    """A non-default service_name is what the docker compose exec targets."""
+    item_id = "F-00099"
+    _write_fixtures(tmp_path, item_id)
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        _apply_per_item_fixtures(
+            item_id,
+            "iw-rag-e2e-f00099",
+            str(tmp_path),
+            service_name="api",
+        )
+    assert mock_run.call_count == 1
+    argv = mock_run.call_args[0][0]
+    t_idx = argv.index("-T")
+    assert argv[t_idx + 1] == "api"
+    # And the rest of the argv (uv run python scripts/e2e_apply_item_fixtures.py <item>)
+    # is unchanged.
+    expected_tail = ["uv", "run", "python", "scripts/e2e_apply_item_fixtures.py", item_id]
+    assert argv[t_idx + 2 :] == expected_tail
+
+
+def test_apply_per_item_fixtures_unchanged_argv_for_default(tmp_path: Path) -> None:
+    """With the default service_name the built argv is byte-for-byte what it was pre-CR."""
+    item_id = "F-00099"
+    _write_fixtures(tmp_path, item_id)
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        _apply_per_item_fixtures(item_id, "iw-ai-core-e2e-f00099", str(tmp_path))
+    argv = mock_run.call_args[0][0]
+    assert argv == [
+        "docker",
+        "compose",
+        "-p",
+        "iw-ai-core-e2e-f00099",
+        "exec",
+        "-T",
+        "e2e-dashboard",
+        "uv",
+        "run",
+        "python",
+        "scripts/e2e_apply_item_fixtures.py",
+        item_id,
+    ]
+
+
+def test_apply_per_item_fixtures_no_fixtures_dir_skips_exec(tmp_path: Path) -> None:
+    """Fast path: no e2e_fixtures directory → no subprocess.run call, regardless of service_name."""
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        result = _apply_per_item_fixtures(
+            "F-00099",
+            "iw-ai-core-e2e-f00099",
+            str(tmp_path),
+            service_name="api",
+        )
+    # Fast path returns None silently and never shells out — verify both.
+    assert result is None
+    mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# CR-00100 — _apply_per_item_fixtures: extra argv-contract assertions
+# ---------------------------------------------------------------------------
+# The tests above pin the existence of the new behaviour. The tests below
+# pin the *exact* argv shape so a regression that keeps the argv in the right
+# overall structure but slips the wrong service token into the slot is still
+# caught. The "BAD" assertion (`assert "e2e-dashboard" in cmd`) would survive
+# that regression because the substring matches elsewhere in compose logging;
+# these tests assert the token at its exact argv position.
+
+
+def test_apply_per_item_fixtures_configured_argv_excludes_default(tmp_path: Path) -> None:
+    """AC2 strengthened: configured service='api' lands in the argv AND 'e2e-dashboard' is absent.
+
+    A future bug that injects 'e2e-dashboard' unconditionally — e.g. an
+    internal helper hardcoding the default — must not survive this test.
+    """
+    item_id = "F-00099"
+    _write_fixtures(tmp_path, item_id)
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        _apply_per_item_fixtures(
+            item_id,
+            "iw-rag-e2e-f00099",
+            str(tmp_path),
+            service_name="api",
+        )
+    assert mock_run.call_count == 1
+    argv = mock_run.call_args[0][0]
+    # 1) The exact token is 'api' at the post-'-T' position.
+    assert argv[argv.index("-T") + 1] == "api"
+    # 2) The default service name MUST NOT appear anywhere in the argv
+    #    (not even as a substring of another token) — pins the AC2 invariant.
+    assert "e2e-dashboard" not in argv
+
+
+def test_apply_per_item_fixtures_default_service_token_at_exact_position(tmp_path: Path) -> None:
+    """AC1 strengthened: default service token is exactly 'e2e-dashboard' at the '-T' position.
+
+    Belt-and-braces for the default case: the index-based check is repeated
+    here as a dedicated test so a future mutation that flips just the default
+    path is caught independently of the configured-service test above.
+    """
+    item_id = "F-00099"
+    _write_fixtures(tmp_path, item_id)
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        _apply_per_item_fixtures(item_id, "iw-ai-core-e2e-f00099", str(tmp_path))
+    argv = mock_run.call_args[0][0]
+    assert argv[argv.index("-T") + 1] == "e2e-dashboard"
+    # And the default value matches the module-level constant — guards against
+    # a future rename that forgets to update the test fixture.
+    assert argv[argv.index("-T") + 1] == _E2E_DASHBOARD_SERVICE
+
+
+def test_apply_per_item_fixtures_no_dir_skips_exec_with_default_service(tmp_path: Path) -> None:
+    """AC3 (default service): no e2e_fixtures dir → subprocess seam never invoked.
+
+    The default `service_name` parameter is `_E2E_DASHBOARD_SERVICE`; the
+    fast-path check must trip *before* the service-name ever reaches the
+    argv, regardless of which service was going to be used.
+    """
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        result = _apply_per_item_fixtures(
+            "F-00099",
+            "iw-ai-core-e2e-f00099",
+            str(tmp_path),
+            # service_name omitted — falls through to the default
+        )
+    assert result is None
+    mock_run.assert_not_called()
+
+
+def test_apply_per_item_fixtures_empty_dir_skips_exec_with_default_service(tmp_path: Path) -> None:
+    """AC3 (default service): empty e2e_fixtures dir → subprocess seam never invoked.
+
+    The fast-path also short-circuits when the directory exists but contains
+    no non-private ``*.py`` files. Verified for the default service.
+    """
+    fx_dir = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures"
+    fx_dir.mkdir(parents=True, exist_ok=True)
+    # The directory exists but has no fixture files (not even a private
+    # underscore-prefixed one — those are filtered out too).
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        result = _apply_per_item_fixtures(
+            "F-00099",
+            "iw-ai-core-e2e-f00099",
+            str(tmp_path),
+        )
+    assert result is None
+    mock_run.assert_not_called()
+
+
+def test_apply_per_item_fixtures_empty_dir_skips_exec_with_custom_service(tmp_path: Path) -> None:
+    """AC3 (configured service): empty e2e_fixtures dir → subprocess seam never invoked.
+
+    Symmetric with the no-dir case but for a non-default service name. The
+    fast-path must short-circuit *before* the configured service name is
+    considered; otherwise projects that override the service would still pay
+    the docker-compose exec cost on items that ship no fixtures.
+    """
+    fx_dir = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures"
+    fx_dir.mkdir(parents=True, exist_ok=True)
+    mock_result = MagicMock(stdout="", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        result = _apply_per_item_fixtures(
+            "F-00099",
+            "iw-ai-core-e2e-f00099",
+            str(tmp_path),
+            service_name="api",
+        )
+    assert result is None
+    mock_run.assert_not_called()

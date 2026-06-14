@@ -1431,16 +1431,19 @@ class BatchManager:
 
                 # Apply per-item fixtures AFTER env_up so the browser agent
                 # always sees deterministic seed data — on initial provision AND
-                # every fix-cycle re-provision.  Runs inside the e2e-dashboard
-                # container via docker compose exec.  Silent no-op when the
-                # fixtures directory does not exist (most work items).
+                # every fix-cycle re-provision.  Runs inside the project-configured
+                # e2e service container (default: e2e-dashboard) via docker compose
+                # exec.  Silent no-op when the fixtures directory does not exist
+                # (most work items).
                 compose_project_name = bv_env.get("COMPOSE_PROJECT_NAME", "")
                 if compose_project_name:
+                    fixture_apply_svc = browser_env.fixture_apply_service(self.project_config)
                     try:
                         browser_env._apply_per_item_fixtures(  # noqa: SLF001
                             step.work_item_id,
                             compose_project_name,
                             worktree_path,
+                            service_name=fixture_apply_svc,
                         )
                     except Exception as fixture_exc:
                         now = datetime.now(UTC)
