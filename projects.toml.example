@@ -16,6 +16,18 @@ repo_root = "/path/to/iw-ai-core"
 enabled = true
 self_assess = true
 
+# always_in_scope.paths — globs a fix cycle may edit for ANY item in this
+# project, regardless of the item's workflow-manifest allowed_paths. Use it for
+# shared glue that individual feature scopes routinely forget to declare.
+#
+# For projects with browser_verification, list the edge-routing + compose files
+# here: a feature that adds a new externally-routed path prefix (e.g. a console
+# at /console/*) must change docker/caddy/Caddyfile, but the design's Impacted
+# Paths often omit it, so the qv-browser fix cycle dead-ends on an un-amendable
+# blocker (see iw-rag F-00096). Marking them always-in-scope lets that fix
+# self-heal without an operator manifest amendment:
+#   [projects.<id>.always_in_scope]
+#   paths = ["docker/caddy/**", "docker/compose*.yaml", "docker/compose*.yml"]
 [projects.iw-ai-core.always_in_scope]
 paths = [
   "tests/assertion_free_baseline.txt",
