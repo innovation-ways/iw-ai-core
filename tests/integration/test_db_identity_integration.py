@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import uuid
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from orch.db.identity import (
@@ -26,45 +25,24 @@ if TYPE_CHECKING:
     from sqlalchemy import Engine
 
 
-@pytest.fixture(scope="module")
-def pg_container():
-    """PostgreSQL 15 testcontainer, module-scoped to share across tests."""
-    from testcontainers.postgres import PostgresContainer
+@pytest.fixture
+def migrated_engine(db_engine: Engine) -> Engine:
+    """Per-test PostgreSQL clone, already migrated to head with the seeded row.
 
-    with PostgresContainer("postgres:15-alpine") as pg:
-        yield pg
+    Backed by the conftest ``db_engine`` (R-00077 template-clone): every test
+    gets its own isolated database whose alembic migrations have already created
+    all tables/FTS triggers and seeded the ``iw_core_instance`` row. Because the
+    clone is per-test, deleting or downgrading the instance row in one test never
+    leaks into another regardless of ``pytest-randomly`` order — so no module- or
+    class-level "restore the row" guard is needed.
 
+    Args:
+        db_engine: Function-scoped per-test clone from the integration conftest.
 
-@pytest.fixture(scope="module")
-def migrated_engine(pg_container):
-    """SQLAlchemy engine connected to the testcontainer DB, with alembic migrations run.
-
-    Sets IW_CORE_DB_* env vars so that alembic (via env.py) connects to the
-    testcontainer rather than the real platform DB. The env vars are restored
-    on fixture teardown so they don't leak to subsequent tests (which would
-    then try to connect to the now-stopped testcontainer port).
-    Alembic runs all migrations (creating all tables and FTS triggers)
-    and seeds the iw_core_instance row.
+    Returns:
+        The same per-test engine, named ``migrated_engine`` for readability.
     """
-    url = pg_container.get_connection_url().replace(
-        "postgresql+psycopg2://", "postgresql+psycopg://"
-    )
-    parsed = urlparse(url.replace("postgresql+psycopg://", "postgresql://"))
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("IW_CORE_DB_HOST", str(parsed.hostname))
-        mp.setenv("IW_CORE_DB_PORT", str(parsed.port))
-        mp.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
-        mp.setenv("IW_CORE_DB_USER", str(parsed.username))
-        mp.setenv("IW_CORE_DB_PASSWORD", str(parsed.password))
-
-        engine = create_engine(url, pool_pre_ping=True)
-
-        cfg = Config()
-        cfg.set_main_option("script_location", "orch/db/migrations")
-        cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
-        command.upgrade(cfg, "head")
-
-        yield engine
+    return db_engine
 
 
 def _seed_project(engine: Engine) -> None:
@@ -120,40 +98,6 @@ def identity_mismatched(monkeypatch: pytest.MonkeyPatch) -> None:
 def identity_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure IW_CORE_EXPECTED_INSTANCE_ID is not set."""
     monkeypatch.delenv("IW_CORE_EXPECTED_INSTANCE_ID", raising=False)
-
-
-@pytest.fixture(autouse=True)
-def _restore_iw_core_instance_row(migrated_engine: Engine) -> None:
-    """Module-level guard: ensure ``iw_core_instance`` has its (id=1, UUID) row.
-
-    R-00077 / CR-00055: ``test_daemon_startup_refuses_on_missing_row`` DELETEs
-    the row, and ``TestMigrationRoundtrip`` downgrades the entire table.
-    Under randomised order, that leak breaks every other test in the module
-    that expects the row to exist (TestDaemonStartupGate's other three methods
-    + the pre-roundtrip read in TestMigrationRoundtrip's quarantined test).
-    Mirrors ``TestDashboardHealthzIdentity::ensure_instance_row`` but at
-    module scope so it covers every test class in the file.
-    """
-    with migrated_engine.connect() as conn:
-        table_present = conn.execute(
-            text("SELECT 1 FROM pg_tables WHERE tablename = 'iw_core_instance'")
-        ).fetchone()
-        if table_present is None:
-            cfg = Config()
-            cfg.set_main_option("script_location", "orch/db/migrations")
-            cfg.set_main_option(
-                "sqlalchemy.url",
-                migrated_engine.url.render_as_string(hide_password=False),
-            )
-            command.upgrade(cfg, "head")
-        conn.execute(
-            text(
-                "INSERT INTO iw_core_instance (id, instance_id) "
-                "SELECT 1, gen_random_uuid() "
-                "WHERE NOT EXISTS (SELECT 1 FROM iw_core_instance WHERE id = 1)"
-            )
-        )
-        conn.commit()
 
 
 class TestDaemonStartupGate:
@@ -220,27 +164,6 @@ class TestDashboardHealthzIdentity:
     migrated_engine, which is equivalent to what the healthz endpoint does.
     """
 
-    @pytest.fixture(autouse=True)
-    def ensure_instance_row(self, migrated_engine: Engine) -> None:
-        """Ensure iw_core_instance row exists before each test.
-
-        Previous tests (e.g. TestDaemonStartupGate) may have deleted this row.
-        Restore it so this test class's fixtures see a consistent state.
-        """
-        with migrated_engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT instance_id FROM iw_core_instance WHERE id = 1")
-            ).fetchone()
-            if result is None:
-                conn.execute(
-                    text(
-                        "INSERT INTO iw_core_instance (id, instance_id) "
-                        "SELECT 1, gen_random_uuid() "
-                        "WHERE NOT EXISTS (SELECT 1 FROM iw_core_instance WHERE id = 1)"
-                    )
-                )
-                conn.commit()
-
     @pytest.mark.smoke
     def test_healthz_identity_200_on_match(
         self,
@@ -294,22 +217,10 @@ class TestDashboardHealthzIdentity:
 
 
 class TestMigrationRoundtrip:
-    @pytest.mark.order_dependent
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "Module-scoped migrated_engine is outside the conftest's per-test "
-            "clone (R-00077); sibling tests in this module read/insert "
-            "iw_core_instance and random intra-module order can leave "
-            "uuid_before equal to uuid_after, failing the != assertion."
-        ),
-    )
     def test_downgrade_drops_table_and_upgrade_recreates_with_new_uuid(
         self, migrated_engine: Engine
     ) -> None:
         """alembic downgrade -1 drops iw_core_instance; upgrade head re-creates with new UUID."""
-        # NOTE(P1-CR-C-followup-randomly): module-scoped migrated_engine leak;
-        # fix would scope-down to function or add explicit cleanup.
         cfg = Config()
         cfg.set_main_option("script_location", "orch/db/migrations")
         cfg.set_main_option(

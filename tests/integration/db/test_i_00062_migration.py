@@ -13,14 +13,11 @@ Uses the Alembic Python API (same pattern as test_migration_impacted_paths_backf
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
-from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
+from sqlalchemy import inspect
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -31,59 +28,21 @@ MIGRATION_REV = "4cc043748e92"
 PREV_REVISION = "4876b3246ff2"  # head before I-00062 migration
 
 
-@pytest.fixture(scope="module")
-def pg_container() -> PostgresContainer:
-    """Provide a module-scoped PostgreSQL testcontainer for I-00062 migration tests."""
-    with PostgresContainer("postgres:15-alpine") as pg:
-        yield pg
-
-
-@pytest.fixture(scope="module")
-def db_engine(pg_container: PostgresContainer) -> Engine:
-    """Create a SQLAlchemy engine pointed at the testcontainer DB with env vars set.
-
-    Args:
-        pg_container: The running PostgreSQL testcontainer.
-
-    Yields:
-        A configured SQLAlchemy engine with IW_CORE_DB_* env vars set.
-    """
-    url = pg_container.get_connection_url().replace(
-        "postgresql+psycopg2://", "postgresql+psycopg://"
-    )
-    parsed = urlparse(url.replace("postgresql+psycopg://", "postgresql://"))
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("IW_CORE_DB_HOST", str(parsed.hostname))
-        mp.setenv("IW_CORE_DB_PORT", str(parsed.port))
-        mp.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
-        mp.setenv("IW_CORE_DB_USER", str(parsed.username))
-        mp.setenv("IW_CORE_DB_PASSWORD", str(parsed.password))
-        yield create_engine(url, pool_pre_ping=True)
-
-
-@pytest.fixture(scope="module")
+@pytest.fixture
 def migrated_engine(db_engine: Engine) -> Engine:
-    """Apply all alembic migrations up to head (includes I-00062 migration)."""
-    alembic_cfg = Config()
-    alembic_cfg.set_main_option("script_location", "orch/db/migrations")
-    alembic_cfg.set_main_option(
-        "sqlalchemy.url", db_engine.url.render_as_string(hide_password=False)
-    )
-    command.upgrade(alembic_cfg, "head")
-    return db_engine
+    """Per-test PostgreSQL clone, already migrated to head (includes I-00062).
 
-
-@pytest.fixture(scope="module")
-def db_session_factory(migrated_engine: Engine) -> sessionmaker:
-    """Provide a sessionmaker bound to the migrated engine.
+    Backed by the conftest ``db_engine`` (R-00077 template-clone): every test
+    gets its own isolated database, so the downgrade round-trips below never
+    leak schema state into sibling tests regardless of ``pytest-randomly`` order.
 
     Args:
-        migrated_engine: Engine after all alembic migrations have been applied.
+        db_engine: Function-scoped per-test clone from the integration conftest.
 
     Returns:
-        A sessionmaker configured for manual transaction control.
+        The same per-test engine, named ``migrated_engine`` for readability.
     """
-    return sessionmaker(bind=migrated_engine, autocommit=False, autoflush=False)
+    return db_engine
 
 
 @pytest.mark.integration
@@ -135,11 +94,6 @@ class TestI00062MigrationRoundTrip:
         assert "worktree_db_user" not in cols
         assert "worktree_db_password" not in cols
 
-        # CR-00055 / R-00077: this module shares a module-scoped db_engine.
-        # Re-upgrade to head so any sibling test that runs after this one
-        # (under -p randomly) finds the schema at the expected migrated state.
-        command.upgrade(alembic_cfg, "head")
-
     def test_upgrade_idempotent(self, db_engine: Engine, migrated_engine: Engine) -> None:
         """Re-running upgrade is idempotent — columns already exist, no error."""
         alembic_cfg = Config()
@@ -157,22 +111,8 @@ class TestI00062MigrationRoundTrip:
         assert "worktree_db_user" in cols
         assert "worktree_db_password" in cols
 
-    @pytest.mark.order_dependent
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "Module-scoped db_engine is outside the conftest's per-test clone "
-            "(R-00077). Downgrade leaves the schema below MIGRATION_REV and the "
-            "sibling test_upgrade_adds_four_columns reads the same module-scoped "
-            "migrated_engine without re-upgrading, so the random intra-module "
-            "order can break either test."
-        ),
-    )
     def test_re_upgrade_after_downgrade(self, db_engine: Engine) -> None:
         """Full round-trip: downgrade then re-upgrade restores all four columns."""
-        # NOTE(P1-CR-C-followup-randomly): module-scoped engine + multi-test
-        # schema mutation; fix would scope-down migrated_engine to function or
-        # restore the schema to head in a teardown.
         alembic_cfg = Config()
         alembic_cfg.set_main_option("script_location", "orch/db/migrations")
         alembic_cfg.set_main_option(

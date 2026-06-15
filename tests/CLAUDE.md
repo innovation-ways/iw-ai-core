@@ -140,10 +140,17 @@ Fix the leaking side effect (or quarantine it with `@pytest.mark.order_dependent
 random order must also carry `@pytest.mark.xfail(strict=False, ...)` and a
 `# NOTE(P1-CR-C-followup-randomly):` tracking comment.
 
-**Quarantine policy:** The 3 known quarantines are module-scoped `migrated_engine`
-tests in `test_db_identity_integration.py`, `test_pending_migration_log_migration.py`,
-and `test_i_00062_migration.py`. A follow-up CR (`P1-CR-C-followup-randomly-quarantine-cleanup`)
-will scope those engines down to function level.
+**Quarantine policy:** The 3 historical `migrated_engine` quarantines — module-scoped
+engine tests in `test_db_identity_integration.py`, `test_pending_migration_log_migration.py`,
+and `test_i_00062_migration.py` — were resolved (2026-06-15,
+`P1-CR-C-followup-randomly-quarantine-cleanup`) by replacing each file's private
+module-scoped container/engine with the conftest's function-scoped per-test
+`db_engine` clone (R-00077), so every test now gets an isolated at-head database.
+The cleanup also fixed two latent connection leaks (`migrated_engine.connect()`
+passed to a helper without a `with`) that were harmless under a wholesale-torn-down
+module container but blocked per-test clone drop. Verified green across the 4-seed
+sweep. If you re-introduce a module-scoped engine shared across mutating tests,
+prefer the conftest `db_engine` instead of a private container.
 
 **Earlier fallback (CR-00048):** `-p no:randomly` was in `addopts` from 2026-05-13
 to 2026-05-16 after 5 fix cycles could not converge; superseded by CR-00055's

@@ -12,52 +12,31 @@ Tests:
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from testcontainers.postgres import PostgresContainer
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
 
 
-@pytest.fixture(scope="module")
-def pg_container() -> PostgresContainer:
-    with PostgresContainer("postgres:15-alpine") as pg:
-        yield pg
-
-
-@pytest.fixture(scope="module")
-def db_engine(pg_container: PostgresContainer) -> Engine:
-    url = pg_container.get_connection_url().replace(
-        "postgresql+psycopg2://", "postgresql+psycopg://"
-    )
-    parsed = urlparse(url.replace("postgresql+psycopg://", "postgresql://"))
-    # MonkeyPatch.context() restores the original env on teardown so the
-    # testcontainer connection details don't leak to subsequent tests
-    # (which would otherwise try to connect to the now-stopped container).
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("IW_CORE_DB_HOST", str(parsed.hostname))
-        mp.setenv("IW_CORE_DB_PORT", str(parsed.port))
-        mp.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
-        mp.setenv("IW_CORE_DB_USER", str(parsed.username))
-        mp.setenv("IW_CORE_DB_PASSWORD", str(parsed.password))
-        yield create_engine(url, pool_pre_ping=True)
-
-
-@pytest.fixture(scope="module")
+@pytest.fixture
 def migrated_engine(db_engine: Engine) -> Engine:
-    alembic_cfg = Config()
-    alembic_cfg.set_main_option("script_location", "orch/db/migrations")
-    alembic_cfg.set_main_option(
-        "sqlalchemy.url", db_engine.url.render_as_string(hide_password=False)
-    )
+    """Per-test PostgreSQL clone, already migrated to head.
 
-    command.upgrade(alembic_cfg, "head")
+    Backed by the conftest ``db_engine`` (R-00077 template-clone): every test
+    gets its own isolated database, so a downgrade or row insert in one test
+    never leaks into another regardless of ``pytest-randomly`` order.
+
+    Args:
+        db_engine: Function-scoped per-test clone from the integration conftest.
+
+    Returns:
+        The same per-test engine, named ``migrated_engine`` for readability.
+    """
     return db_engine
 
 
@@ -145,27 +124,19 @@ def _insert_invalid_phase(conn):
 
 
 def test_direction_check_constraint(migrated_engine: Engine) -> None:
-    with pytest.raises(IntegrityError):
-        _insert_invalid_direction(migrated_engine.connect())
+    """The direction CHECK constraint rejects a value outside the allowed enum."""
+    with migrated_engine.connect() as conn, pytest.raises(IntegrityError):
+        _insert_invalid_direction(conn)
 
 
 def test_phase_check_constraint(migrated_engine: Engine) -> None:
-    with pytest.raises(IntegrityError):
-        _insert_invalid_phase(migrated_engine.connect())
+    """The phase CHECK constraint rejects a value outside the allowed enum."""
+    with migrated_engine.connect() as conn, pytest.raises(IntegrityError):
+        _insert_invalid_phase(conn)
 
 
-@pytest.mark.order_dependent
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "Module-scoped migrated_engine is outside the conftest's per-test "
-        "clone (R-00077); inserts hardcoded revision IDs that collide with "
-        "rows persisted by sibling tests in this module under random order."
-    ),
-)
 def test_valid_enum_values_accepted(migrated_engine: Engine) -> None:
-    # NOTE(P1-CR-C-followup-randomly): module-scoped migrated_engine leak;
-    # fix would scope-down to function or add explicit cleanup.
+    """All valid (direction, phase) enum combinations are accepted by the table."""
     with migrated_engine.connect() as conn:
         conn.execute(
             text(
@@ -272,10 +243,6 @@ def test_downgrade_drops_table(migrated_engine: Engine) -> None:
         )
         assert result.fetchone() is None
 
-    # CR-00055 / R-00077: this module shares a module-scoped migrated_engine.
-    # Re-upgrade so siblings find the schema in the expected state under -p randomly.
-    command.upgrade(alembic_cfg, "head")
-
 
 def test_upgrade_recreates_table_empty(migrated_engine: Engine) -> None:
     alembic_cfg = Config()
@@ -284,9 +251,7 @@ def test_upgrade_recreates_table_empty(migrated_engine: Engine) -> None:
         "sqlalchemy.url", migrated_engine.url.render_as_string(hide_password=False)
     )
 
-    # CR-00055 / R-00077: Downgrade first so the upgrade genuinely recreates
-    # the table fresh and empty, regardless of any rows sibling tests inserted
-    # into the shared module-scoped engine under -p randomly.
+    # Downgrade first so the upgrade genuinely recreates the table fresh and empty.
     command.downgrade(alembic_cfg, "2bd86f8c105c")
     command.upgrade(alembic_cfg, "head")
 
