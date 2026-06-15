@@ -313,6 +313,73 @@ def sync_assets_cmd(ctx: click.Context, check: bool, project_id: str | None) -> 
     click.echo(f"Done. {total_copied} asset file{plural} {qualifier}synced.")
 
 
+@click.command("sync-doc-system")
+@click.option("--check", is_flag=True, help="Report what would change without modifying files")
+@click.option(
+    "--project", "project_id", default=None, help="Sync a specific project only (default: all)"
+)
+@click.pass_context
+def sync_doc_system_cmd(ctx: click.Context, check: bool, project_id: str | None) -> None:
+    """Sync the shared doc-system config (brand, editorial) to all registered projects.
+
+    Mirrors ``ai-dev/doc-system/`` from the platform repo into each project's
+    ``ai-dev/doc-system/`` directory so the ``iw-doc-system`` doc-generation
+    agent reads consistent brand colours and editorial rules. The per-project
+    ``catalog/`` subtree is never overwritten.
+    """
+    from sqlalchemy import select
+
+    from orch.db.models import Project
+    from orch.skills.sync_doc_system import DOC_SYSTEM_REL_PATH, sync_doc_system
+
+    platform_root = Path(__file__).resolve().parent.parent.parent
+    doc_system_src = platform_root / DOC_SYSTEM_REL_PATH
+
+    if not doc_system_src.is_dir():
+        output_error(ctx, f"doc-system source directory not found: {doc_system_src}", 1)
+
+    get_session = ctx.obj["get_session"]
+    with get_session() as session:
+        q = select(Project)
+        if project_id:
+            q = q.where(Project.id == project_id)
+        projects_data = [(p.id, p.repo_root) for p in session.execute(q).scalars().all()]
+
+    if not projects_data:
+        target = f"project '{project_id}'" if project_id else "any registered project"
+        output_error(ctx, f"No projects found for {target}", 3)
+
+    results: dict[str, dict[str, list[str]]] = {}
+    for pid, repo_root in projects_data:
+        res = sync_doc_system(Path(repo_root), doc_system_src, check_only=check)
+        results[pid] = {
+            "copied": res.copied,
+            "up_to_date": res.up_to_date,
+            "skipped": res.skipped,
+            "errors": res.errors,
+        }
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps({"check_only": check, "projects": results}))
+        return
+
+    action = "Checking" if check else "Syncing"
+    click.echo(f"{action} doc-system config for {len(results)} project(s)...")
+    for pid, r in results.items():
+        verb = "would copy" if check else "copied"
+        click.echo(
+            f"  {pid}: {len(r['copied'])} {verb}, {len(r['up_to_date'])} up to date, "
+            f"{len(r['skipped'])} skipped (catalog)"
+        )
+        for err in r["errors"]:
+            click.echo(f"    WARNING: {err}", err=True)
+
+    total_copied = sum(len(r["copied"]) for r in results.values())
+    qualifier = "would be " if check else ""
+    plural = "s" if total_copied != 1 else ""
+    click.echo(f"Done. {total_copied} doc-system file{plural} {qualifier}synced.")
+
+
 @click.command("init-project")
 @click.option("--id", "project_id", required=True, help="Unique project identifier")
 @click.option(
@@ -353,6 +420,7 @@ def init_project_cmd(
                     "skills_synced": result.skills_synced,
                     "agents_synced": result.agents_synced,
                     "assets_synced": result.assets_synced,
+                    "doc_system_synced": result.doc_system_synced,
                     "db_rows_created": result.db_rows_created,
                     "projects_toml_updated": result.projects_toml_updated,
                 }
@@ -367,5 +435,6 @@ def init_project_cmd(
     click.echo(f"  Skills: {result.skills_synced} base skills synced")
     click.echo(f"  Agents: {result.agents_synced} agents/commands synced")
     click.echo(f"  Assets: {result.assets_synced} brand assets synced")
+    click.echo(f"  Doc-system: {result.doc_system_synced} brand/editorial files synced")
     click.echo("  Workflow: ai-dev/workflow.md created from template")
     click.echo("Ready. Project will appear in dashboard on next daemon poll.")

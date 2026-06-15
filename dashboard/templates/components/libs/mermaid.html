@@ -2,7 +2,7 @@
 <script>
   if (typeof mermaid !== 'undefined') {
     // Innovation Ways brand theme (base + brand themeVariables + Neo look),
-    // sourced from doc-system/brand/brand.json via the iw_brand_mermaid_config
+    // sourced from ai-dev/doc-system/brand/brand.json via the iw_brand_mermaid_config
     // Jinja global so client-side diagrams match the server-rendered HTML/PDF.
     var iwBrandCfg = {{ (iw_brand_mermaid_config | default({}, true)) | tojson }};
     mermaid.initialize(Object.assign(

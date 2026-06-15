@@ -26,7 +26,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Migrations | `orch/db/migrations/versions/` |
 | Pre-merge migration rebase (CR-00021) | `orch/daemon/migration_rebase.py` · `docs/IW_AI_Core_Daemon_Design.md` |
 | Skills master copies | `skills/` (synced via `iw sync-skills`); design templates in `templates/design/` (synced via `iw sync-templates`) |
-| Editorial guidelines (doc system) | `doc-system/` (brand, catalog, editorial) |
+| Editorial guidelines (doc system) | `ai-dev/doc-system/` (brand, catalog, editorial) — synced to every project via `iw sync-doc-system` |
 
 ## Architecture
 
@@ -228,7 +228,7 @@ playwright-cli -s=<name> open <url>  # Named session (for auth persistence)
 | `skills/` | Master copies of agent skills — sync with `iw sync-skills` |
 | `templates/design/` | Master copies of design doc templates — sync with `iw sync-templates` |
 | `commands/` · `agents/` | Agent command specs (claude, opencode) — sync with `iw sync-agents` |
-| `doc-system/` | Editorial config (brand, catalog, guidelines) used by doc-generator skills |
+| `ai-dev/doc-system/` | Editorial config (brand, catalog, guidelines) used by doc-generator skills; shared parts synced to every project via `iw sync-doc-system` |
 | `ai-dev/templates/` | Per-project copy of design doc templates (written by `iw sync-templates`) |
 | `docs/` | Architecture, schema, CLI spec, daemon design, implementation plan |
 

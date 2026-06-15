@@ -1,5 +1,5 @@
 ---
-version: "1.0.0"
+version: "1.0.1"
 name: iw-doc-system
 description: >
   Unified documentation generation system for InnoForge deliverable documents.
@@ -19,18 +19,18 @@ centralized branding, editorial guidelines, and structured templates. Output inc
 Markdown (committed to git), HTML, and PDF (generated on demand via Playwright).
 
 This skill handles the **content generation** step. The rendering pipeline
-(`doc-system/scripts/`) handles HTML templating and PDF conversion separately.
+(`ai-dev/doc-system/scripts/`) handles HTML templating and PDF conversion separately.
 
 ## Prerequisites
 
 Before generating ANY document, you MUST read these files in order:
 
-1. **System instructions**: `doc-system/CLAUDE.md` (if it exists)
-2. **Brand configuration**: `doc-system/brand/brand.json`
-3. **Global editorial guidelines**: `doc-system/editorial/_default.md`
-4. **Category editorial guidelines**: `doc-system/editorial/{category}.md` — if this file does not exist, `_default.md` already covers the required guidelines; proceed without it
-5. **Document catalog**: `doc-system/catalog/index.json` — find the target document entry (skip if the doc is not listed; use `doc_title` and `editorial_category` from the job context instead)
-6. **Generation manifest**: `doc-system/catalog/generation-manifest.json` — find source files for this document (skip if not listed; read `CLAUDE.md` and relevant `docs/` files instead)
+1. **System instructions**: `ai-dev/doc-system/CLAUDE.md` (if it exists)
+2. **Brand configuration**: `ai-dev/doc-system/brand/brand.json`
+3. **Global editorial guidelines**: `ai-dev/doc-system/editorial/_default.md`
+4. **Category editorial guidelines**: `ai-dev/doc-system/editorial/{category}.md` — if this file does not exist, `_default.md` already covers the required guidelines; proceed without it
+5. **Document catalog**: `ai-dev/doc-system/catalog/index.json` — find the target document entry (skip if the doc is not listed; use `doc_title` and `editorial_category` from the job context instead)
+6. **Generation manifest**: `ai-dev/doc-system/catalog/generation-manifest.json` — find source files for this document (skip if not listed; read `CLAUDE.md` and relevant `docs/` files instead)
 7. **Source files**: Read ALL files listed in the manifest's `sources` array for this document
 
 The editorial guidelines contain critical instructions that affect content, tone, and structure.
@@ -45,7 +45,7 @@ Do NOT skip steps 2–4. Steps 1, 5, 6, 7 may be skipped if the files don't exis
 The user specifies a document by ID (e.g., `TECH-001`) or by description.
 
 If by ID:
-- Look up the document in `doc-system/catalog/index.json`
+- Look up the document in `ai-dev/doc-system/catalog/index.json`
 - Read its entry for title, audience, description, template, source dependencies
 
 If by description:
@@ -120,7 +120,7 @@ General rules:
 ### Step 5: Update Catalog
 
 After generating the document:
-- Update the document's `status` from `planned` to `draft` in `doc-system/catalog/index.json`
+- Update the document's `status` from `planned` to `draft` in `ai-dev/doc-system/catalog/index.json`
 - Update `last_generated` to the current ISO date
 - Update `version` if this is a regeneration
 
@@ -129,7 +129,7 @@ After generating the document:
 Tell the user:
 1. What was generated (file paths)
 2. How to render HTML + PDF: `make docs-generate-single ID={DOC_ID}`
-3. How to review and provide feedback (edit `doc-system/editorial/{category}.md`)
+3. How to review and provide feedback (edit `ai-dev/doc-system/editorial/{category}.md`)
 4. Any source files that were missing or incomplete
 
 ## Document Categories and Prefixes
@@ -157,8 +157,8 @@ documentation/{category}/{DOC_ID}-{slug}/
 
 ## Critical Rules
 
-- **NEVER** modify `doc-system/brand/brand.json` or any template files
-- **NEVER** modify `doc-system/catalog/` files except to update status/timestamp of the document you just generated
+- **NEVER** modify `ai-dev/doc-system/brand/brand.json` or any template files
+- **NEVER** modify `ai-dev/doc-system/catalog/` files except to update status/timestamp of the document you just generated
 - **ALWAYS** read editorial guidelines before writing — they contain accumulated human feedback
 - **ALWAYS** read ALL source files from the generation manifest before writing
 - **ALWAYS** include YAML frontmatter in every markdown document
@@ -175,6 +175,8 @@ documentation/{category}/{DOC_ID}-{slug}/
 When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash command `/iw-doc-system doc-job <job-id>` is issued), you are running inside a queued documentation generation job. Your responsibilities:
 
 1. **Read the job context.** Run `uv run iw doc-job-status <job-id> --json`. The JSON output gives you `editorial_category`, `doc_id`, `project_id`, `doc_title`, `section_guides_snapshot`, and `guide_snapshot` — everything you need to produce the right content. If this command exits non-zero, do NOT proceed — close the job immediately with `iw doc-job-done <job-id> --error 'job context not found'`.
+
+   **Note on null editorial snapshots:** `section_guides_snapshot` and/or `guide_snapshot` being `null` (or empty) is **normal and expected** — many docs have no per-section or per-type editorial guide. It is **not** a reason to abort. When the editorial snapshot is null/empty, proceed using the static editorial guidance bundled with this skill (`references/diagram-guidelines.md` for diagram docs, and the other `references/…-guidelines.md` / the rest of this SKILL.md for prose docs). Only close the job with `--error` when `iw doc-job-status <job-id> --json` itself exits non-zero (job not found / DB error), or when generation genuinely cannot proceed for a concrete reason — never merely because the editorial snapshot was empty.
 
 2. **Generate the document content** following the editorial guide rules described in the rest of this skill.
 

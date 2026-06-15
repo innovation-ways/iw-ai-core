@@ -47,6 +47,7 @@ from orch.cli.skills_commands import (
     init_project_cmd,
     sync_agents_cmd,
     sync_assets_cmd,
+    sync_doc_system_cmd,
     sync_skills_cmd,
     sync_templates_cmd,
 )
@@ -141,6 +142,7 @@ cli.add_command(sync_skills_cmd, name="sync-skills")
 cli.add_command(sync_agents_cmd, name="sync-agents")
 cli.add_command(sync_templates_cmd, name="sync-templates")
 cli.add_command(sync_assets_cmd, name="sync-assets")
+cli.add_command(sync_doc_system_cmd, name="sync-doc-system")
 cli.add_command(init_project_cmd, name="init-project")
 cli.add_command(daemon)
 cli.add_command(projects)

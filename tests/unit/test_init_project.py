@@ -38,6 +38,16 @@ def _make_platform_root(tmp_path: Path) -> Path:
     assets.mkdir(parents=True)
     (assets / "iw-mark.svg").write_text("<svg>mark</svg>", encoding="utf-8")
     (platform_root / "ai-dev" / "iw-assets" / "README.md").write_text("brand\n", encoding="utf-8")
+    # Minimal doc-system master tree (brand + editorial + project-specific catalog).
+    doc_system = platform_root / "ai-dev" / "doc-system"
+    (doc_system / "brand").mkdir(parents=True)
+    (doc_system / "editorial").mkdir(parents=True)
+    (doc_system / "catalog").mkdir(parents=True)
+    (doc_system / "brand" / "brand.json").write_text(
+        '{"name": "Innovation Ways"}', encoding="utf-8"
+    )
+    (doc_system / "editorial" / "_default.md").write_text("editorial\n", encoding="utf-8")
+    (doc_system / "catalog" / "index.json").write_text('{"documents": []}', encoding="utf-8")
     return platform_root
 
 
@@ -179,6 +189,23 @@ def test_copies_brand_assets_into_project(tmp_path: Path) -> None:
     assert result.assets_synced == 2
     assert (repo_path / "ai-dev" / "iw-assets" / "svg" / "iw-mark.svg").exists()
     assert "ai-dev/iw-assets/" in result.created_files
+
+
+def test_copies_doc_system_config_into_project(tmp_path: Path) -> None:
+    """Verifies init_project deploys the shared doc-system config but not the catalog."""
+    repo_path = tmp_path / "proj"
+    repo_path.mkdir()
+    platform_root = _make_platform_root(tmp_path)
+    session = _make_mock_session()
+
+    result = init_project("proj", repo_path, "Proj", session, platform_root=platform_root)
+
+    assert result.doc_system_synced == 2
+    assert (repo_path / "ai-dev" / "doc-system" / "brand" / "brand.json").exists()
+    assert (repo_path / "ai-dev" / "doc-system" / "editorial" / "_default.md").exists()
+    assert "ai-dev/doc-system/" in result.created_files
+    # The project-specific catalog/ must never be created by a sync.
+    assert not (repo_path / "ai-dev" / "doc-system" / "catalog").exists()
 
 
 def test_result_db_rows_created(tmp_path: Path) -> None:

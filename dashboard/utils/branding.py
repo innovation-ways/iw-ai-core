@@ -1,6 +1,6 @@
 """Innovation Ways brand source-of-truth for document rendering.
 
-Loads ``doc-system/brand/brand.json`` once and derives every brand artifact the
+Loads ``ai-dev/doc-system/brand/brand.json`` once and derives every brand artifact the
 rendering pipeline needs from that single file: the colour palette, the Mermaid
 ``themeVariables`` config, an embeddable Inter ``@font-face`` block (base64 from
 ``dashboard/static/fonts/inter/*.woff2``), and Innovation Ways logo markup drawn
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Repo root = two levels up from dashboard/utils/branding.py
 _PLATFORM_ROOT = Path(__file__).resolve().parents[2]
-_BRAND_JSON = _PLATFORM_ROOT / "doc-system" / "brand" / "brand.json"
+_BRAND_JSON = _PLATFORM_ROOT / "ai-dev" / "doc-system" / "brand" / "brand.json"
 _INTER_FONT_DIR = _PLATFORM_ROOT / "dashboard" / "static" / "fonts" / "inter"
 _ASSETS_DIR = _PLATFORM_ROOT / "ai-dev" / "iw-assets"
 

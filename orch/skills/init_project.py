@@ -53,6 +53,7 @@ class InitProjectResult:
     skills_synced: int = 0
     agents_synced: int = 0
     assets_synced: int = 0
+    doc_system_synced: int = 0
     db_rows_created: list[str] = field(default_factory=list)
     projects_toml_updated: bool = False
 
@@ -212,5 +213,16 @@ def init_project(
     result.assets_synced = len(asset_sync.copied)
     if asset_sync.copied:
         result.created_files.append("ai-dev/iw-assets/")
+
+    # ------------------------------------------------------------------
+    # 9. Sync shared doc-system config (brand, editorial) into the project
+    # ------------------------------------------------------------------
+    from orch.skills.sync_doc_system import DOC_SYSTEM_REL_PATH, sync_doc_system
+
+    doc_system_src = root / DOC_SYSTEM_REL_PATH
+    doc_system_sync = sync_doc_system(repo_path, doc_system_src)
+    result.doc_system_synced = len(doc_system_sync.copied)
+    if doc_system_sync.copied:
+        result.created_files.append("ai-dev/doc-system/")
 
     return result

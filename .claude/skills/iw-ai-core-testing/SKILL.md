@@ -1,6 +1,6 @@
 ---
 name: iw-ai-core-testing
-version: "1.0.1"
+version: "1.0.2"
 description: IW AI Core testing standards, patterns, and quality rules for writing, reviewing, and designing tests. Covers assertion strength, the live-DB write guard and testcontainer rules, cross-project isolation, state-machine/property-test guidance, TDD with RED evidence, and the test red-flag checklist. Use when writing tests, adding test coverage, reviewing tests, strengthening tests, or designing a test plan for IW AI Core.
 allowed-tools: Read, Grep, Glob
 ---
@@ -509,7 +509,7 @@ Six structured journey modules under `tests/e2e/` drive a real Chromium via `pla
 
 The visual layer (`make visual-regression`) protects rendered docs (HTML + PDF) from CSS/template regressions.
 
-- Add a baseline for every new editorial category shipped under `doc-system/`.
+- Add a baseline for every new editorial category shipped under `ai-dev/doc-system/`.
 - Intentional baseline updates must be review-gated PRs that touch `tests/visual/baselines/**`.
 - Never auto-accept diffs in tests (forbidden pattern: "if diff > threshold, overwrite baseline").
 - Follow the Playwright CLI rules in the repository `CLAUDE.md` (use `playwright-cli` only; no `agent-browser`, no direct Playwright API).
