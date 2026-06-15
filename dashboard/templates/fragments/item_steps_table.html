@@ -2,7 +2,7 @@
 {% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button, abandon_merge_button, restart_setup_button, approve_merge_button with context %}
 
 <div id="item-steps-table" class="bg-card border border-border rounded-lg overflow-x-auto">
-  <table class="w-full text-sm min-w-[600px]">
+  <table class="iw-responsive-table w-full text-sm min-w-[600px]">
     <thead>
       <tr class="border-b border-border bg-muted/30">
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step</th>
@@ -24,7 +24,7 @@
       {% for step in steps %}
         {% set run_count = step_run_counts[step.step_id] if step_run_counts is defined and step.step_id in step_run_counts else step.run_count %}
         <tr class="border-b border-border last:border-0 hover:bg-muted/20">
-          <td class="px-4 py-2 font-mono text-xs font-semibold">
+          <td data-label="Step" class="px-4 py-2 font-mono text-xs font-semibold">
             {{ step.step_id }}
             <!-- C.1: run-count badge when step ran more than once -->
             {% if not step.is_synthetic and run_count > 1 %}
@@ -44,7 +44,7 @@
               </button>
             {% endif %}
           </td>
-          <td class="px-4 py-2">
+          <td data-label="Agent" class="px-4 py-2">
             <div class="text-xs text-foreground">{{ step.agent_label }}</div>
             {% set subtitle = step.step_label or step.description %}
             {% if subtitle %}
@@ -56,7 +56,7 @@
             {% endif %}
           </td>
           {# F-00081: CLI column — <select> for editable steps (pending|failed), badge for others #}
-          <td class="px-4 py-2">
+          <td data-label="CLI" class="px-4 py-2">
             {% if step.is_synthetic %}
               <span class="text-xs text-muted-foreground">—</span>
             {% elif step.status in ('pending', 'failed') %}
@@ -90,7 +90,7 @@
             {% endif %}
           </td>
           {# F-00081: Model column — read-only badge #}
-          <td class="px-4 py-2">
+          <td data-label="Model" class="px-4 py-2">
             {% if step.is_synthetic %}
               <span class="text-xs text-muted-foreground">—</span>
             {% else %}
@@ -98,7 +98,7 @@
               <span class="text-xs text-muted-foreground">{{ ro_opt.model_label if ro_opt else '—' }}</span>
             {% endif %}
           </td>
-          <td class="px-4 py-2">
+          <td data-label="Prompt" class="px-4 py-2">
             {% if step.is_synthetic or not step.has_prompt %}
               <span class="text-xs text-muted-foreground">—</span>
             {% else %}
@@ -113,7 +113,7 @@
               </button>
             {% endif %}
           </td>
-          <td class="px-4 py-2">
+          <td data-label="Status" class="px-4 py-2">
               {% if step.scope_violations %}
                 {# I-00101: scope-blocked badge with accessible path list #}
                 <span
@@ -126,7 +126,7 @@
                 {{ status_badge(step.status) }}
               {% endif %}
             </td>
-          <td class="px-4 py-2">
+          <td data-label="Logs" class="px-4 py-2">
             {% if not step.is_synthetic and step.run_count > 0 %}
             <button
               class="session-log-trigger p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
@@ -144,7 +144,7 @@
             <span class="text-muted-foreground/30">—</span>
             {% endif %}
           </td>
-          <td class="px-4 py-2 min-w-[90px]">
+          <td data-label="Context" class="px-4 py-2 min-w-[90px]">
             {% set ctx_peak = step.context_tokens_peak | default(none) %}
             {% set ctx_window = step.context_window_tokens | default(none) %}
             {% set ctx_eff_pct = step.context_effective_pct | default(none) %}
@@ -169,14 +169,14 @@
               <span class="text-muted-foreground/30">—</span>
             {% endif %}
           </td>
-          <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
+          <td data-label="Started" class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
             {% if step.started_at %}
               {{ step.started_at | localdt('%H:%M:%S') }}
             {% else %}
               —
             {% endif %}
           </td>
-          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+          <td data-label="Duration" class="px-4 py-2 font-mono text-xs text-muted-foreground">
             {% if step.duration_secs is not none %}
               {% set m = (step.duration_secs // 60)|int %}
               {% set s = (step.duration_secs % 60)|int %}
@@ -185,7 +185,7 @@
               —
             {% endif %}
           </td>
-          <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
+          <td data-label="Runs" class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
             {{ step.run_count }}
             {% if step.fix_cycle_count > 0 %}
               <span class="ml-1 inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-warning/20 text-warning-foreground border border-warning/30" title="{{ step.fix_cycle_count }} fix cycle{{ 's' if step.fix_cycle_count != 1 else '' }}">
@@ -193,11 +193,11 @@
               </span>
             {% endif %}
           </td>
-          <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate hidden md:table-cell"
+          <td data-label="Error" class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate hidden md:table-cell"
               title="{{ step.error_message or '' }}">
             {{ step.error_message or '—' }}
           </td>
-          <td class="px-4 py-2 text-right">
+          <td class="px-4 py-2 text-right iw-rt-actions">
             {% if step.step_id == 'MERGE' and step.status == 'awaiting_approval' %}
               <div class="flex items-center justify-end gap-1">
                 {{ approve_merge_button(item.project_id, item.id) }}

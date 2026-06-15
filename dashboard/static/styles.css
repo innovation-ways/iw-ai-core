@@ -699,3 +699,86 @@ div.mermaid-diagram span {
   color: #1c1917;
   line-height: 1.4;
 }
+
+/* ── Mobile responsive data tables ──────────────────────────────────────────
+   Tables tagged .iw-responsive-table render normally (with horizontal scroll)
+   from 640px up. Below 640px each row reflows into a stacked label/value card so
+   wide tables (item steps, history, jobs) no longer force horizontal scrolling
+   with the important columns pushed off-screen on phones. Per-cell labels come
+   from the `data-label` attribute on each <td>. */
+@media (max-width: 639px) {
+  .iw-responsive-table {
+    /* Break the table-layout algorithm and drop the desktop min-width so rows
+       can stack and the table fits the viewport in card mode. */
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .iw-responsive-table thead {
+    display: none;
+  }
+  .iw-responsive-table tbody,
+  .iw-responsive-table tr,
+  .iw-responsive-table td {
+    display: block;
+    width: 100%;
+  }
+  .iw-responsive-table tr {
+    border-bottom: 1px solid var(--border);
+    padding: 0.4rem 0;
+  }
+  .iw-responsive-table tr:last-child {
+    border-bottom: 0;
+  }
+  .iw-responsive-table td {
+    padding: 0.3rem 0.9rem !important;
+    text-align: left !important;
+    border: 0;
+  }
+  .iw-responsive-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.1rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted-foreground);
+  }
+  /* Desktop truncation caps must not exceed the card width on mobile. */
+  .iw-responsive-table .max-w-xs {
+    max-width: 100% !important;
+  }
+  /* Action cells have no label; keep them tight and left-aligned, and collapse
+     when a step has no available actions. */
+  .iw-responsive-table .iw-rt-actions {
+    padding-top: 0.1rem !important;
+    padding-bottom: 0.1rem !important;
+  }
+  .iw-responsive-table .iw-rt-actions > div {
+    justify-content: flex-start !important;
+  }
+  /* Empty-state / colspan rows stay centered with no label. */
+  .iw-responsive-table td[colspan] {
+    text-align: center !important;
+  }
+}
+
+/* ── Horizontal-scroll affordance (self-hiding edge shadows) ─────────────────
+   Lea Verou's CSS scroll-shadow technique: the opaque "cover" gradients are
+   pinned to the content (background-attachment: local) and hide the shadow once
+   that edge is fully reached, so a shadow only shows while there is more content
+   to scroll to in that direction. Scoped to mobile where these strips overflow.
+   `--iw-scroll-cover` is the underlying surface colour (defaults to the card). */
+@media (max-width: 639px) {
+  .iw-scroll-shadow {
+    background:
+      linear-gradient(to right, var(--iw-scroll-cover, var(--card)) 30%, rgba(0, 0, 0, 0)) 0 0,
+      linear-gradient(to left, var(--iw-scroll-cover, var(--card)) 30%, rgba(0, 0, 0, 0)) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0)) 0 0,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0)) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 34px 100%, 34px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+}

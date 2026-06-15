@@ -67,7 +67,7 @@
 
 <!-- Table -->
 <div class="bg-card border border-border rounded-lg overflow-x-auto mb-4">
-  <table id="history-table" class="w-full text-sm min-w-[550px]">
+  <table id="history-table" class="iw-responsive-table w-full text-sm min-w-[550px]">
     <thead>
       <tr class="border-b border-border bg-muted/30">
         {% set cols = [
@@ -107,14 +107,14 @@
             data-sort-status="{{ item.status }}"
             data-sort-created="{{ item.created_at.isoformat() }}"
             data-sort-duration="{{ item.duration_secs if item.duration_secs is not none else -1 }}">
-          <td class="px-4 py-2 font-mono text-xs text-primary">{{ item.id }}</td>
-          <td class="px-4 py-2">{{ status_badge(item.type) }}</td>
-          <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
-          <td class="px-4 py-2">{{ status_badge(item.status) }}</td>
-          <td class="px-4 py-2 text-xs text-muted-foreground">
+          <td data-label="ID" class="px-4 py-2 font-mono text-xs text-primary">{{ item.id }}</td>
+          <td data-label="Type" class="px-4 py-2">{{ status_badge(item.type) }}</td>
+          <td data-label="Title" class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
+          <td data-label="Status" class="px-4 py-2">{{ status_badge(item.status) }}</td>
+          <td data-label="Date" class="px-4 py-2 text-xs text-muted-foreground">
             {{ item.created_at | localdt('%b %d') }}
           </td>
-          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+          <td data-label="Duration" class="px-4 py-2 font-mono text-xs text-muted-foreground">
             {% if item.duration_secs is not none %}
               {% set mins = (item.duration_secs // 60)|int %}
               {% set secs = (item.duration_secs % 60)|int %}

@@ -30,7 +30,7 @@
 </div>
 
 <!-- Tab navigation -->
-<div id="tab-nav" data-tour="item-tabs" class="flex border-b border-border mb-4 overflow-x-auto">
+<div id="tab-nav" data-tour="item-tabs" class="iw-scroll-shadow flex border-b border-border mb-4 overflow-x-auto" style="--iw-scroll-cover: var(--background)">
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview"
           hx-target="#tab-content"
           hx-swap="innerHTML"

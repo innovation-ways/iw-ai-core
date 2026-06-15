@@ -191,14 +191,16 @@
              {% if current_project %}hx-vals='{"project": "{{ current_project.id }}"}'{% endif %}
              name="q"
              placeholder="Search work items… (Ctrl+K)"
-             class="w-full max-w-full sm:max-w-md px-4 py-1.5 bg-input border border-border rounded-md text-sm
+             class="w-full min-w-0 max-w-full sm:max-w-md px-4 py-1.5 bg-input border border-border rounded-md text-sm
                     text-foreground placeholder:text-muted-foreground
                     focus:outline-none focus:ring-2 focus:ring-ring" />
       <div id="global-search-results" class="absolute left-3 sm:left-6 top-full z-50 w-full max-w-md"></div>
       {% if not request.state.suppress_topbar_auto_merge_chip and current_project and (request.state.auto_merge_phase_for_chip is defined) and (request.state.auto_merge_phase_for_chip is integer) and (request.state.auto_merge_phase_for_chip >= 1) and (request.state.auto_merge_status_for_chip is defined) and (request.state.auto_merge_status_for_chip is not none) %}
         {% set compact = true %}
         {% set status = request.state.auto_merge_status_for_chip %}
-        <div id="auto-merge-chip-header">{% include "fragments/auto_merge_status_chip.html" %}</div>
+        {# Hidden below sm: the compact chip is ~270px wide and clips the header on phones.
+           Full status remains available on the /auto-merge page and the rich panel. #}
+        <div id="auto-merge-chip-header" class="hidden sm:block min-w-0 flex-shrink">{% include "fragments/auto_merge_status_chip.html" %}</div>
       {% endif %}
       {% set _help_slug = self.page_help_slug() %}
       {% if _help_slug %}

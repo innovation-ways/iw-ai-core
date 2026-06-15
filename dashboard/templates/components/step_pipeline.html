@@ -6,7 +6,7 @@
   Fix-cycle reruns render as separate amber pills labelled ↺SXX.
   Container exposes data-step-count for no-regression testing.
 #}
-<div class="iw-pipeline-strip" data-step-count="{{ steps | length }}">
+<div class="iw-pipeline-strip iw-scroll-shadow" data-step-count="{{ steps | length }}">
   {% for step in steps %}
     {# ── Main pill ── #}
     {% set pill_status = 'completed' if step.status == 'completed'
