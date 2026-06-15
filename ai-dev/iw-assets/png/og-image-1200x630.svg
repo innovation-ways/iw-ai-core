@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" fill="none">
+  <rect width="1200" height="630" fill="#FFFFFF"/>
+  <line x1="984.0" y1="113.4" x2="1104.0" y2="189.0" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="984.0" y1="113.4" x2="840.0" y2="214.2" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="1104.0" y1="189.0" x2="1056.0" y2="327.6" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="840.0" y1="214.2" x2="768.0" y2="315.0" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="1056.0" y1="327.6" x2="912.0" y2="403.2" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="1056.0" y1="327.6" x2="1140.0" y2="441.0" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="912.0" y1="403.2" x2="1008.0" y2="504.0" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="912.0" y1="403.2" x2="876.0" y2="554.4" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="768.0" y1="315.0" x2="696.0" y2="176.4" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <line x1="1140.0" y1="441.0" x2="1008.0" y2="504.0" stroke="#0D9488" stroke-opacity="0.08" stroke-width="1.5"/>
+  <circle cx="984.0" cy="113.4" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="1104.0" cy="189.0" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="840.0" cy="214.2" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="1056.0" cy="327.6" r="7" fill="#0D9488" fill-opacity="0.85"/>
+  <circle cx="912.0" cy="403.2" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="1140.0" cy="441.0" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="768.0" cy="315.0" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="1008.0" cy="504.0" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="876.0" cy="554.4" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <circle cx="696.0" cy="176.4" r="4.5" fill="#0D9488" fill-opacity="0.16"/>
+  <path d="M6 8 V24" transform="translate(152.0502083333333 147.66666666666669) scale(6.145833333333332)" stroke="#0D9488" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <path d="M13.5 8 L16.7 24 L20 14.5 L23.3 24 L26.5 8" transform="translate(152.0502083333333 147.66666666666669) scale(6.145833333333332)" stroke="#1A1D23" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="354.74812499999996" y="276.36" font-family="Space Grotesk" font-weight="600" font-size="88" letter-spacing="-1.76" fill="#1A1D23">Innovation Ways</text>
+  <text x="600" y="410" text-anchor="middle" font-family="Inter, Space Grotesk" font-weight="400" font-size="32" fill="#71757E">Telecom BSS engineering · Production-grade applied AI</text>
+  <rect x="570" y="452" width="60" height="3" rx="1.5" fill="#0D9488"/>
+  <text x="600" y="528" text-anchor="middle" font-family="Inter, Space Grotesk" font-weight="600" font-size="32" fill="#0D9488">innovation-ways.com</text>
+</svg>

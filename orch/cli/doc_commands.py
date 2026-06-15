@@ -605,3 +605,68 @@ def doc_job_status(ctx: click.Context, job_id: str, json_output: bool) -> None:
         if result["section_guides_snapshot"]:
             click.echo(f"  Section guides: {len(result['section_guides_snapshot'])} section(s)")
         click.echo(f"  Guide snapshot: {'present' if result['guide_snapshot'] else 'none'}")
+
+
+@click.command("validate-diagrams", short_help="Validate Mermaid/D2 diagrams in a document")
+@click.argument("source", required=False, default=None)
+@click.option(
+    "--doc-id",
+    "doc_id",
+    default=None,
+    help="Validate a stored document's diagrams by ID (uses --project or CWD project)",
+)
+@click.pass_context
+def validate_diagrams(ctx: click.Context, source: str | None, doc_id: str | None) -> None:
+    """Validate every Mermaid/D2 diagram in a document by rendering it.
+
+    Reads markdown from a FILE path, from stdin (``-`` or no argument), or from a
+    stored document (``--doc-id``). Exits non-zero when any validated diagram
+    fails to render, so agents can self-check diagrams before ``doc-update``.
+    """
+    from orch.diagram.validate import validate_markdown_diagrams
+
+    if doc_id:
+        project_id = resolve_project(ctx)
+        get_session = ctx.obj["get_session"]
+        with get_session() as session:
+            doc = DocService(session).get_doc(project_id, doc_id)
+            if doc is None:
+                output_error(ctx, f"Document {doc_id!r} not found in {project_id!r}", 3)
+            content = doc.content or ""
+    elif source is None or source == "-":
+        content = sys.stdin.read()
+    else:
+        path = Path(source)
+        if not path.is_file():
+            output_error(ctx, f"File not found: {source}", 2)
+        content = path.read_text(encoding="utf-8")
+
+    result = validate_markdown_diagrams(content)
+
+    if ctx.obj.get("json"):
+        click.echo(
+            json.dumps(
+                {
+                    "total": result.total,
+                    "validated": result.validated,
+                    "skipped": result.skipped,
+                    "ok": result.ok,
+                    "issues": [
+                        {"index": i.index, "kind": i.kind, "message": i.message}
+                        for i in result.issues
+                    ],
+                }
+            )
+        )
+    else:
+        click.echo(
+            f"Diagrams: {result.total} found, {result.validated} validated, "
+            f"{result.skipped} skipped (renderer unavailable)"
+        )
+        for issue in result.issues:
+            click.echo(f"  FAIL: {issue.message}", err=True)
+        if result.ok:
+            click.echo("All validated diagrams render cleanly.")
+
+    if not result.ok:
+        ctx.exit(1)

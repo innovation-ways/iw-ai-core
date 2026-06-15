@@ -125,6 +125,36 @@ def test_i00107_reload_rebuilds_batch_manager_when_iw_orch_json_changes(tmp_path
 
 
 # ---------------------------------------------------------------------------
+# Brand-asset distribution — a newly-added project receives the IW assets
+# ---------------------------------------------------------------------------
+
+
+def test_reload_syncs_brand_assets_into_newly_added_project(tmp_path: Path) -> None:
+    """Adding a project to projects.toml copies the IW brand assets into its repo."""
+    projects_toml = tmp_path / "projects.toml"
+    demo = tmp_path / "demo"
+    demo.mkdir()
+    newproj = tmp_path / "newproj"
+    newproj.mkdir()
+
+    _write_projects_toml(projects_toml, project_id="demo", repo_root=str(demo))
+
+    daemon = _build_daemon(projects_toml)
+    daemon._reload_projects_if_stale()  # initial load — only 'demo' known
+
+    # Register a brand-new project by appending a second table.
+    with projects_toml.open("a", encoding="utf-8") as fh:
+        fh.write(f'\n[projects.newproj]\nrepo_root = "{newproj}"\nenabled = true\n')
+    daemon.registry._mtime = 0.0  # simulate SIGHUP
+    daemon._reload_projects_if_stale()
+
+    # The 'added' branch must have mirrored the platform brand assets in.
+    assert (newproj / "ai-dev" / "iw-assets" / "svg" / "iw-mark.svg").exists(), (
+        "a newly-registered project must receive the Innovation Ways brand assets"
+    )
+
+
+# ---------------------------------------------------------------------------
 # AC5 — no-churn guard (regression against "always rebuild")
 # ---------------------------------------------------------------------------
 

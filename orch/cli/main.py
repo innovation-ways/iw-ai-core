@@ -21,6 +21,7 @@ from orch.cli.doc_commands import (
     doc_job_status,
     doc_update,
     docs_export,
+    validate_diagrams,
 )
 from orch.cli.event_commands import daemon_event
 from orch.cli.id_commands import current_project, next_id
@@ -45,6 +46,7 @@ from orch.cli.search_commands import search
 from orch.cli.skills_commands import (
     init_project_cmd,
     sync_agents_cmd,
+    sync_assets_cmd,
     sync_skills_cmd,
     sync_templates_cmd,
 )
@@ -138,6 +140,7 @@ cli.add_command(search)
 cli.add_command(sync_skills_cmd, name="sync-skills")
 cli.add_command(sync_agents_cmd, name="sync-agents")
 cli.add_command(sync_templates_cmd, name="sync-templates")
+cli.add_command(sync_assets_cmd, name="sync-assets")
 cli.add_command(init_project_cmd, name="init-project")
 cli.add_command(daemon)
 cli.add_command(projects)
@@ -147,6 +150,7 @@ cli.add_command(doc_job_start, name="doc-job-start")
 cli.add_command(doc_job_done, name="doc-job-done")
 cli.add_command(doc_job_status, name="doc-job-status")
 cli.add_command(docs_export, name="docs-export")
+cli.add_command(validate_diagrams, name="validate-diagrams")
 cli.add_command(db_identity)
 cli.add_command(db_backup)
 cli.add_command(oss)

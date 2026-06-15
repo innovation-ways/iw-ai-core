@@ -33,6 +33,11 @@ def _make_platform_root(tmp_path: Path) -> Path:
     (platform_root / "templates" / "default_workflow.md").write_text(
         "# Workflow Definition\n## Steps\n1. Implementation\n", encoding="utf-8"
     )
+    # Minimal brand-asset master tree so init_project's asset sync has a source.
+    assets = platform_root / "ai-dev" / "iw-assets" / "svg"
+    assets.mkdir(parents=True)
+    (assets / "iw-mark.svg").write_text("<svg>mark</svg>", encoding="utf-8")
+    (platform_root / "ai-dev" / "iw-assets" / "README.md").write_text("brand\n", encoding="utf-8")
     return platform_root
 
 
@@ -160,6 +165,20 @@ def test_result_contains_created_files(tmp_path: Path) -> None:
     assert ".iw-orch.json" in result.created_files
     assert "ai-dev/workflow.md" in result.created_files
     assert result.projects_toml_updated is True
+
+
+def test_copies_brand_assets_into_project(tmp_path: Path) -> None:
+    """Verifies init_project mirrors the brand assets into the new project."""
+    repo_path = tmp_path / "proj"
+    repo_path.mkdir()
+    platform_root = _make_platform_root(tmp_path)
+    session = _make_mock_session()
+
+    result = init_project("proj", repo_path, "Proj", session, platform_root=platform_root)
+
+    assert result.assets_synced == 2
+    assert (repo_path / "ai-dev" / "iw-assets" / "svg" / "iw-mark.svg").exists()
+    assert "ai-dev/iw-assets/" in result.created_files
 
 
 def test_result_db_rows_created(tmp_path: Path) -> None:

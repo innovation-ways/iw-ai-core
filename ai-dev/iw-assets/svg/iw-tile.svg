@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-label="Innovation Ways">
+  <rect width="512" height="512" rx="112" fill="#0D9488"/>
+  <path d="M6 8 V24" transform="translate(56.66666666666665 59.73333333333335) scale(12.266666666666666)" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <path d="M13.5 8 L16.7 24 L20 14.5 L23.3 24 L26.5 8" transform="translate(56.66666666666665 59.73333333333335) scale(12.266666666666666)" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

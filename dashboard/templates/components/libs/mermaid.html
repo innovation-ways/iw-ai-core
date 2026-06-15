@@ -1,8 +1,14 @@
 <script src="/static/vendor/mermaid/mermaid.min.js"></script>
 <script>
   if (typeof mermaid !== 'undefined') {
-    var isDark = document.documentElement.classList.contains('dark');
-    mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'base', securityLevel: 'loose' });
+    // Innovation Ways brand theme (base + brand themeVariables + Neo look),
+    // sourced from doc-system/brand/brand.json via the iw_brand_mermaid_config
+    // Jinja global so client-side diagrams match the server-rendered HTML/PDF.
+    var iwBrandCfg = {{ (iw_brand_mermaid_config | default({}, true)) | tojson }};
+    mermaid.initialize(Object.assign(
+      { startOnLoad: false, securityLevel: 'loose' },
+      iwBrandCfg
+    ));
     window.iwRenderMermaid = async function(root) {
       var scope = root || document;
       // div.mermaid format (legacy / chat-inserted blocks)

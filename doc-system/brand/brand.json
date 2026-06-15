@@ -1,16 +1,20 @@
 {
   "name": "Innovation Ways",
   "colors": {
-    "primary": "#1E293B",
-    "accent": "#3B82F6",
-    "accentLight": "#DBEAFE",
+    "primary": "#1A1D23",
+    "ink": "#1A1D23",
+    "accent": "#0D9488",
+    "accentStrong": "#115E59",
+    "accentLight": "#CCFBF1",
+    "accentTint": "#F0FDFA",
     "secondary": "#10B981",
     "secondaryLight": "#D1FAE5",
     "background": "#F8FAFC",
     "surface": "#FFFFFF",
     "border": "#E2E8F0",
-    "text": "#0F172A",
-    "textMuted": "#64748B",
+    "text": "#1A1D23",
+    "textMuted": "#71757E",
+    "line": "#475569",
     "warning": "#F59E0B",
     "error": "#EF4444",
     "success": "#10B981"
@@ -21,8 +25,11 @@
     "mono": "JetBrains Mono"
   },
   "logo": {
-    "primary": "templates/brand/assets/logo.svg",
-    "darkBackground": "templates/brand/assets/logo-white.svg",
+    "horizontal": "ai-dev/iw-assets/svg/iw-logo-horizontal.svg",
+    "horizontalWhite": "ai-dev/iw-assets/svg/iw-logo-horizontal-white.svg",
+    "mark": "ai-dev/iw-assets/svg/iw-mark.svg",
+    "markWhite": "ai-dev/iw-assets/svg/iw-mark-white.svg",
+    "wordmark": "ai-dev/iw-assets/svg/iw-wordmark.svg",
     "text": "Innovation Ways"
   },
   "spacing": {
@@ -38,6 +45,42 @@
     "marginRight": "18mm"
   },
   "diagrams": {
-    "mermaidInit": "%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#DBEAFE', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#3B82F6', 'lineColor': '#64748B', 'secondaryColor': '#D1FAE5', 'tertiaryColor': '#F8FAFC', 'background': '#FFFFFF', 'mainBkg': '#DBEAFE', 'nodeBorder': '#3B82F6', 'clusterBkg': '#F1F5F9', 'titleColor': '#1E293B', 'edgeLabelBackground': '#F8FAFC', 'fontFamily': 'Inter'}}}%%"
+    "look": "neo",
+    "theme": "base",
+    "themeVariables": {
+      "primaryColor": "#CCFBF1",
+      "primaryTextColor": "#1A1D23",
+      "primaryBorderColor": "#0D9488",
+      "lineColor": "#475569",
+      "secondaryColor": "#D1FAE5",
+      "tertiaryColor": "#F1F5F9",
+      "background": "#FFFFFF",
+      "mainBkg": "#CCFBF1",
+      "nodeBorder": "#0D9488",
+      "clusterBkg": "#F0FDFA",
+      "clusterBorder": "#99F6E4",
+      "titleColor": "#115E59",
+      "edgeLabelBackground": "#FFFFFF",
+      "textColor": "#1A1D23",
+      "fontFamily": "Helvetica Neue, Helvetica, Arial, sans-serif"
+    },
+    "mermaidInit": "%%{init: {'look': 'neo', 'theme': 'base', 'themeVariables': {'primaryColor': '#CCFBF1', 'primaryTextColor': '#1A1D23', 'primaryBorderColor': '#0D9488', 'lineColor': '#475569', 'secondaryColor': '#D1FAE5', 'tertiaryColor': '#F1F5F9', 'background': '#FFFFFF', 'mainBkg': '#CCFBF1', 'nodeBorder': '#0D9488', 'clusterBkg': '#F0FDFA', 'clusterBorder': '#99F6E4', 'titleColor': '#115E59', 'edgeLabelBackground': '#FFFFFF', 'textColor': '#1A1D23', 'fontFamily': 'Helvetica Neue, Helvetica, Arial, sans-serif'}}}%%",
+    "d2Layout": "elk",
+    "d2ThemeOverrides": {
+      "B1": "#115E59",
+      "B2": "#0D9488",
+      "B3": "#14B8A6",
+      "B4": "#5EEAD4",
+      "B5": "#CCFBF1",
+      "B6": "#F0FDFA",
+      "N1": "#1A1D23",
+      "N2": "#1A1D23",
+      "N3": "#475569",
+      "AA2": "#115E59",
+      "AA4": "#0D9488",
+      "AA5": "#CCFBF1",
+      "AB4": "#0D9488",
+      "AB5": "#F0FDFA"
+    }
   }
 }

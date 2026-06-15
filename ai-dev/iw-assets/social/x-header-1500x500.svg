@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="500" viewBox="0 0 1500 500" fill="none">
+  <rect width="1500" height="500" fill="#FFFFFF"/>
+  <line x1="1408.2" y1="90.0" x2="1459.2" y2="150.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1408.2" y1="90.0" x2="1347.0" y2="170.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1459.2" y1="150.0" x2="1438.8" y2="260.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1347.0" y1="170.0" x2="1316.4" y2="250.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1438.8" y1="260.0" x2="1377.6" y2="320.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1438.8" y1="260.0" x2="1474.5" y2="350.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1377.6" y1="320.0" x2="1418.4" y2="400.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1377.6" y1="320.0" x2="1362.3" y2="440.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1316.4" y1="250.0" x2="1285.8" y2="140.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <line x1="1474.5" y1="350.0" x2="1418.4" y2="400.0" stroke="#0D9488" stroke-opacity="0.14" stroke-width="1.5"/>
+  <circle cx="1408.2" cy="90.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1459.2" cy="150.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1347.0" cy="170.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1438.8" cy="260.0" r="7" fill="#0D9488" fill-opacity="0.85"/>
+  <circle cx="1377.6" cy="320.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1474.5" cy="350.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1316.4" cy="250.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1418.4" cy="400.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1362.3" cy="440.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <circle cx="1285.8" cy="140.0" r="4.5" fill="#0D9488" fill-opacity="0.3"/>
+  <path d="M6 8 V24" transform="translate(82.08333333333334 81.66666666666667) scale(5.208333333333332)" stroke="#0D9488" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <path d="M13.5 8 L16.7 24 L20 14.5 L23.3 24 L26.5 8" transform="translate(82.08333333333334 81.66666666666667) scale(5.208333333333332)" stroke="#1A1D23" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="262.4375" y="193.29" font-family="Space Grotesk" font-weight="600" font-size="82" letter-spacing="-1.6400000000000001" fill="#1A1D23">Innovation Ways</text>
+  <text x="105" y="310" font-family="Space Grotesk" font-weight="600" font-size="43" letter-spacing="-0.86" fill="#1A1D23">Mission-critical systems, built in the open.</text>
+  <text x="105" y="372" font-family="Inter, Space Grotesk" font-weight="400" font-size="28" fill="#71757E">Telecom BSS engineering · Production-grade applied AI</text>
+  <text x="105" y="440" font-family="Inter, Space Grotesk" font-weight="500" font-size="25" fill="#0D9488">innovation-ways.com   ·   github.com/innovation-ways</text>
+</svg>

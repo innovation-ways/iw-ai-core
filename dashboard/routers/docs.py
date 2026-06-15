@@ -13,6 +13,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from dashboard.utils.branding import (
+    brand_colors,
+    brand_lockup_html,
+    inter_font_face_css,
+)
 from dashboard.utils.markdown import render_markdown_with_callouts, render_pdf_chromium
 from orch.db.models import DocStatus, DocType, JobStatus, Project
 from orch.doc_service import DocService
@@ -179,9 +184,19 @@ def docs_html_view(
         html_bytes = Path(doc.html_path).read_bytes()
         return Response(content=html_bytes, media_type="text/html")
 
-    # Fallback: render markdown inline with minimal styling
+    # Fallback: render markdown inline with brand styling (Innovation Ways
+    # palette + embedded Inter + logo lockup) so the on-the-fly HTML view is
+    # on-brand and consistent with the PDF output.
     normalized_content = _normalize_doc_content_for_render(doc)
     rendered = render_markdown_with_callouts(normalized_content, render_mermaid=True)
+    colors = brand_colors()
+    ink = colors.get("ink", "#1A1D23")
+    accent = colors.get("accent", "#0D9488")
+    accent_strong = colors.get("accentStrong", "#115E59")
+    accent_tint = colors.get("accentTint", "#F0FDFA")
+    border = colors.get("border", "#E2E8F0")
+    font_face = inter_font_face_css()
+    lockup = brand_lockup_html()
     fallback_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -189,18 +204,27 @@ def docs_html_view(
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{doc.title}</title>
 <style>
-  body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px;
-         color: #0F172A; line-height: 1.6; }}
-  h1,h2,h3 {{ color: #1E293B; }} h2 {{ border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }}
-   table {{ border-collapse: collapse; width: 100%; }}
-   th,td {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
-  th {{ background: #F1F5F9; }} img {{ max-width: 100%; }}
+  {font_face}
+  body {{ font-family: 'Inter', system-ui, sans-serif; max-width: 860px; margin: 40px auto;
+         padding: 0 24px; color: {ink}; line-height: 1.6; }}
+  .iw-lockup {{ display: inline-flex; align-items: center; gap: 8px; margin-bottom: 24px;
+         padding-bottom: 16px; border-bottom: 2px solid {accent}; width: 100%; }}
+  .iw-lockup-mark svg {{ height: 26px; width: 26px; display: block; }}
+  .iw-lockup-name {{ font-weight: 600; font-size: 15px; letter-spacing: -0.01em; color: {ink}; }}
+  h1,h2,h3 {{ color: {ink}; letter-spacing: -0.01em; }}
+  h2 {{ border-bottom: 1px solid {border}; padding-bottom: 6px; }}
+  a {{ color: {accent_strong}; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th,td {{ border: 1px solid {border}; padding: 8px 12px; }}
+  th {{ background: {accent_tint}; color: {accent_strong}; }} img {{ max-width: 100%; }}
+  blockquote {{ border-left: 3px solid {accent}; padding-left: 1em; color: #71757E; }}
   code {{ background: #F1F5F9; padding: 2px 5px; border-radius: 3px; font-size: 0.875em; }}
   pre {{ background: #F1F5F9; padding: 16px; border-radius: 6px; overflow-x: auto; }}
   pre code {{ background: none; padding: 0; }}
+  .mermaid-diagram svg {{ max-width: 100%; height: auto; }}
 </style>
 </head>
-<body>{rendered}</body>
+<body>{lockup}{rendered}</body>
 </html>"""
 
     # Cache to disk only when mmdc succeeded (no raw mermaid block fell through)

@@ -703,6 +703,35 @@ class Daemon:
     # Project reload
     # ------------------------------------------------------------------
 
+    def _sync_brand_assets(self, project_id: str, cfg: ProjectConfig) -> None:
+        """Copy the Innovation Ways brand assets into a newly-registered project.
+
+        Best-effort: a copy failure is logged but never aborts project discovery.
+        Idempotent (byte-identical files are skipped), so it is safe even though a
+        project added via ``iw init-project`` already received the assets.
+
+        Args:
+            project_id: The newly-added project's identifier (for log context).
+            cfg: The project's configuration (provides the repo root).
+        """
+        from pathlib import Path  # noqa: PLC0415
+
+        from orch.skills.sync_assets import ASSETS_REL_PATH, sync_assets  # noqa: PLC0415
+
+        platform_root = Path(__file__).resolve().parents[2]
+        assets_src = platform_root / ASSETS_REL_PATH
+        try:
+            result = sync_assets(Path(cfg.repo_root), assets_src)
+        except Exception:  # noqa: BLE001 — never let asset copy crash the daemon
+            logger.warning("Brand-asset sync failed for new project %r", project_id, exc_info=True)
+            return
+        if result.copied:
+            logger.info(
+                "Synced %d brand asset(s) into new project %r", len(result.copied), project_id
+            )
+        for err in result.errors:
+            logger.warning("Brand-asset sync issue for %r: %s", project_id, err)
+
     def _reload_projects_if_stale(self) -> None:
         """Re-read projects.toml if the file's mtime has changed."""
         if not self.registry.is_stale():
@@ -722,6 +751,7 @@ class Daemon:
                 with self._session_factory() as db:
                     sync_project_to_db(db, cfg)
                     emit_event(db, project_id=project_id, event_type="project_discovered")
+                self._sync_brand_assets(project_id, cfg)
 
             elif change == "removed":
                 self.projects.pop(project_id, None)

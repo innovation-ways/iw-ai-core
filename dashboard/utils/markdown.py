@@ -14,6 +14,17 @@ from typing import TYPE_CHECKING
 import markdown as md_lib
 from bs4 import BeautifulSoup
 
+from dashboard.utils.branding import (
+    brand_dark_text_token,
+    d2_layout,
+    diagram_wants_elk,
+    ensure_brand_init,
+    ensure_d2_brand,
+    inter_font_face_css,
+    mermaid_config_json,
+)
+from orch.diagram.sanitize import sanitize_mermaid
+
 if TYPE_CHECKING:
     from bs4.element import Tag
 
@@ -91,8 +102,32 @@ _MERMAID_CODE_RE = re.compile(
     re.DOTALL,
 )
 
+_D2_CODE_RE = re.compile(
+    r'<pre><code class="language-d2">(.*?)</code></pre>',
+    re.DOTALL,
+)
+
 # Puppeteer config for headless Chromium (no sandbox for Linux/WSL)
 _PUPPETEER_CONFIG = '{"args":["--no-sandbox","--disable-setuid-sandbox"]}'
+
+
+def _resolve_d2_binary() -> Path | None:
+    """Locate the ``d2`` executable for server-side D2 diagram rendering.
+
+    Resolution order: ``$IW_D2_PATH`` (if it exists) → ``~/.local/bin/d2`` →
+    ``shutil.which("d2")`` → None (callers fall back to Kroki, then raw block).
+    """
+    env_path = os.environ.get("IW_D2_PATH", "")
+    if env_path and Path(env_path).exists():
+        return Path(env_path)
+    local = Path.home() / ".local" / "bin" / "d2"
+    if local.is_file():
+        return local
+    found = shutil.which("d2")
+    return Path(found) if found else None
+
+
+_D2_BINARY: Path | None = _resolve_d2_binary()
 
 
 def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
@@ -142,221 +177,117 @@ def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
         return pdf_path.read_bytes()
 
 
-def _sanitize_mermaid(source: str) -> str:
-    """Apply lightweight fixes for common Mermaid syntax problems.
-
-    Rules applied:
-
-    1. **Sequence diagram semicolons** — arrow-label text containing `;` confuses
-       the parser (``CLI->>DB: BEGIN; SELECT FOR UPDATE``).  Replace `;` in labels
-       with `,`.
-
-    2. **Bracket/paren inside unquoted node label** — ``{pid}``, ``[pid]``, or
-       ``(pid)`` inside a ``NodeID[...]`` label triggers shape parsing.  Convert
-       the whole unquoted ``[label]`` to ``["label"]`` (double-quoted labels allow
-       arbitrary text including brackets).  Quoted labels like ``NodeID["..."]``
-       and subgraph headers like ``subgraph X["..."]`` are left untouched.
-
-    3. **state-v2 → stateDiagram-v2** — LLMs sometimes write the shorthand;
-       Mermaid only recognises ``stateDiagram-v2``.
-
-    4. **ELK layout removed for non-flowchart diagrams** — the ELK renderer is
-       only valid for ``flowchart``/``graph`` diagrams.  Applying it to
-       ``sequenceDiagram``, ``erDiagram``, ``stateDiagram-v2``, etc. breaks
-       rendering.  Strip the ``---\\nconfig:\\n  layout: elk\\n---`` frontmatter
-       when the diagram type is not a flowchart or graph.
-    """
-    # Rule 3: state-v2 → stateDiagram-v2
-    source = re.sub(r"\bstate-v2\b", "stateDiagram-v2", source)
-
-    # Rule 5: strip '?' from node IDs (invalid in Mermaid)
-    # Matches bareword node IDs ending in '?' before whitespace, '[', '{', '(', or '>'
-    # e.g. "has_batches?" → "has_batches", "all_proj_done?" → "all_proj_done"
-    source = re.sub(r"(\b\w[\w-]*)\?(?=[\s\[\{>\(|]|$)", r"\1", source)
-
-    # Rule 6: replace [*] in flowchart context (stateDiagram-only syntax)
-    if re.search(r"^\s*(flowchart|graph)\b", source, re.MULTILINE | re.IGNORECASE):
-        source = source.replace("--> [*]", '--> end_node["End"]')
-        source = source.replace("[*] -->", 'start_node["Start"] -->')
-
-    # Rule 8: join multi-line flowchart arrows — LLMs sometimes write
-    #   nodeId
-    #   -->|label| target
-    # which is invalid; join so the arrow is on the same line as the source.
-    # Only applies inside flowchart/graph blocks (not sequence/stateDiagram).
-    if re.search(r"^\s*(flowchart|graph)\b", source, re.MULTILINE | re.IGNORECASE):
-        _multiline_arrow = re.compile(
-            r"^(\s*)(\w[\w-]*)\s*\n\s*\n?\s*(-->|-.->|==>)(.*)$",
-            re.MULTILINE,
-        )
-        # Iterate to handle multiple consecutive splits; limit iterations to avoid loops
-        for _ in range(10):
-            new_source = _multiline_arrow.sub(r"\1\2 \3\4", source)
-            if new_source == source:
-                break
-            source = new_source
-
-    lines = source.splitlines()
-
-    # Detect the diagram type (first non-frontmatter line that looks like a type)
-    _elk_frontmatter_re = re.compile(
-        r"^---\s*\nconfig:\s*\n\s+layout:\s*elk\s*\n---\s*\n", re.MULTILINE
-    )
-    _flowchart_types = re.compile(r"^\s*(flowchart|graph)\b", re.IGNORECASE)
-    # Strip ELK layout for diagram types that don't support it (Rule 4)
-    if _elk_frontmatter_re.search(source):
-        non_front = _elk_frontmatter_re.sub("", source, count=1).lstrip()
-        first_content_line = non_front.splitlines()[0] if non_front else ""
-        if not _flowchart_types.match(first_content_line):
-            source = _elk_frontmatter_re.sub("", source, count=1)
-            lines = source.splitlines()
-
-    in_sequence = any(line.strip().lower() == "sequencediagram" for line in lines)
-
-    # Arrow pattern for sequence diagrams (labels after ':')
-    _arrow_re = re.compile(r"^(\s*\S+\s*(?:->>|-->|->>|->)\s*\S+\s*:)(.*)")
-
-    # Node definition: NodeId[label...]
-    # We only rewrite unquoted labels — those that DON'T already start with "
-    # Pattern: word chars, then '[' not immediately followed by '"'
-    _unquoted_node = re.compile(r"^(\s*\w[\w-]*)\[(?!\")")
-
-    # Pattern to detect brackets/parens that need quoting inside node labels
-    bracket_chars = re.compile(r"[{}\[\]()]")
-
-    fixed: list[str] = []
-    for line in lines:
-        # Rule 1: sequence diagram arrow semicolons
-        if in_sequence:
-            m = _arrow_re.match(line)
-            if m:
-                label = m.group(2).replace(";", ",")
-                line = m.group(1) + label
-
-        # Skip %%{init:...}%% frontmatter
-        if line.strip().startswith("%%"):
-            fixed.append(line)
-            continue
-
-        # Rule 2: convert NodeId[label] → NodeId["label"] if label has brackets
-        m2 = _unquoted_node.match(line)
-        if m2:
-            rest_after_bracket = line[m2.end() :]  # everything after the opening '['
-            # Find the matching closing ']' at the top level
-            depth = 1
-            end_idx = None
-            for ci, ch in enumerate(rest_after_bracket):
-                if ch == "[":
-                    depth += 1
-                elif ch == "]":
-                    depth -= 1
-                    if depth == 0:
-                        end_idx = ci
-                        break
-            if end_idx is not None:
-                label_content = rest_after_bracket[:end_idx]
-                suffix = rest_after_bracket[end_idx + 1 :]  # after the closing ']'
-                if bracket_chars.search(label_content):
-                    # Wrap in double quotes; escape any existing double quotes
-                    quoted_label = label_content.replace('"', "&quot;")
-                    line = m2.group(1) + '["' + quoted_label + '"]' + suffix
-
-        fixed.append(line)
-    return "\n".join(fixed)
-
-
 def _render_mermaid_to_svg(mermaid_source: str) -> str | None:
     """Render a Mermaid diagram source string to an SVG string using mmdc.
 
-    Applies lightweight sanitization before rendering.  Falls back to
-    Kroki.io if mmdc fails (e.g. complex diagrams that trip up the local
-    Mermaid version).
+    Applies lightweight sanitization, then renders with the Innovation Ways
+    brand theme (base theme + brand themeVariables + Inter + Neo look). Graph-
+    based diagrams (flowchart/graph/state/class/ER) additionally request the ELK
+    layout engine for cleaner routing. Falls back to Kroki.io — with the brand
+    init directive injected into the source — if mmdc fails.
 
     Returns the SVG string on success, or None if all methods fail.
     """
-    sanitized = _sanitize_mermaid(mermaid_source)
+    sanitized = sanitize_mermaid(mermaid_source)
+    elk = diagram_wants_elk(sanitized)
 
-    # --- Primary: local mmdc ---
-    svg = _render_mermaid_mmdc(sanitized)
+    # --- Primary: local mmdc (brand theme via --configFile) ---
+    svg = _render_mermaid_mmdc(sanitized, elk=elk)
     if svg is not None:
         return svg
 
-    # --- Fallback: Kroki.io REST API ---
-    svg = _render_mermaid_kroki(sanitized)
+    # --- Fallback: Kroki.io REST API (brand theme via injected init directive) ---
+    svg = _render_mermaid_kroki(ensure_brand_init(sanitized, elk=elk))
     if svg is not None:
         logger.debug("Used Kroki.io fallback for a diagram")
     return svg
 
 
-def _render_mermaid_mmdc(mermaid_source: str) -> str | None:
+def _render_mermaid_mmdc(mermaid_source: str, *, elk: bool = False) -> str | None:
     """Render Mermaid to SVG using the local mmdc (npx @mermaid-js/mermaid-cli).
 
-    Uses the ``default`` theme with an explicit dark primaryTextColor so
-    labels remain legible regardless of where the SVG is later embedded
-    (dark dashboard page, standalone HTML file, PDF).  A mermaid config file
-    is passed via ``--configFile`` to set themeVariables that survive the
-    SVG serialisation.
+    Uses the Innovation Ways brand theme (``base`` theme + brand themeVariables +
+    Inter + Neo look) passed via ``--configFile`` so on-brand styling survives the
+    SVG serialisation even when the LLM-authored source carries no init directive.
+    The explicit dark ``primaryTextColor`` (brand ink) keeps ``<foreignObject>``
+    labels legible on any background.
+
+    Args:
+        mermaid_source: Sanitised Mermaid source.
+        elk: Request the ELK layout engine (graph-based diagrams only). If the
+            local mmdc build lacks ELK and the render fails, it is retried once
+            without the layout override so brand theming is never lost.
+
+    Returns:
+        The SVG string, or None when mmdc is unavailable or fails (after the
+        no-ELK retry).
     """
-    # Mermaid config: default theme + explicit dark label colour + light bg.
-    # The "default" theme uses a light background by default; explicit
-    # primaryTextColor ensures <foreignObject> label <div>s do not inherit
-    # a near-white page colour and render invisible in dark mode.
-    mermaid_config = (
-        '{"theme": "default", "themeVariables": '
-        '{"primaryTextColor": "#1e293b", "textColor": "#1e293b", '
-        '"lineColor": "#334155", "background": "#ffffff"}}'
-    )
+    env = os.environ.copy()
+    if _PLAYWRIGHT_CHROME is not None and _PLAYWRIGHT_CHROME.exists():
+        env["PUPPETEER_EXECUTABLE_PATH"] = str(_PLAYWRIGHT_CHROME)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        mmd_path = Path(tmpdir) / "diagram.mmd"
-        svg_path = Path(tmpdir) / "diagram.svg"
-        cfg_path = Path(tmpdir) / "puppeteer.json"
-        mmd_cfg_path = Path(tmpdir) / "mermaid.json"
+    def _run(use_elk: bool) -> str | None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mmd_path = Path(tmpdir) / "diagram.mmd"
+            svg_path = Path(tmpdir) / "diagram.svg"
+            cfg_path = Path(tmpdir) / "puppeteer.json"
+            mmd_cfg_path = Path(tmpdir) / "mermaid.json"
+            css_path = Path(tmpdir) / "fonts.css"
 
-        mmd_path.write_text(mermaid_source, encoding="utf-8")
-        cfg_path.write_text(_PUPPETEER_CONFIG, encoding="utf-8")
-        mmd_cfg_path.write_text(mermaid_config, encoding="utf-8")
+            mmd_path.write_text(mermaid_source, encoding="utf-8")
+            cfg_path.write_text(_PUPPETEER_CONFIG, encoding="utf-8")
+            mmd_cfg_path.write_text(mermaid_config_json(elk=use_elk), encoding="utf-8")
+            # Make the brand Inter webfont available to mmdc's render page so a
+            # diagram that explicitly opts into Inter renders with it. (The
+            # default brand diagram font is a Chromium-native sans stack — see
+            # brand.json — because async webfont loading races mmdc's node-width
+            # measurement and clips labels.)
+            css_path.write_text(inter_font_face_css(), encoding="utf-8")
 
-        env = os.environ.copy()
-        if _PLAYWRIGHT_CHROME is not None and _PLAYWRIGHT_CHROME.exists():
-            env["PUPPETEER_EXECUTABLE_PATH"] = str(_PLAYWRIGHT_CHROME)
+            try:
+                result = subprocess.run(  # noqa: S603
+                    [  # noqa: S607
+                        "npx",
+                        "@mermaid-js/mermaid-cli",
+                        "-i",
+                        str(mmd_path),
+                        "-o",
+                        str(svg_path),
+                        "-b",
+                        "#ffffff",
+                        "--puppeteerConfigFile",
+                        str(cfg_path),
+                        "-c",
+                        str(mmd_cfg_path),
+                        "-C",
+                        str(css_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+                logger.debug("mmdc failed: %s", exc)
+                return None
 
-        try:
-            result = subprocess.run(  # noqa: S603
-                [  # noqa: S607
-                    "npx",
-                    "@mermaid-js/mermaid-cli",
-                    "-i",
-                    str(mmd_path),
-                    "-o",
-                    str(svg_path),
-                    "-b",
-                    "#ffffff",
-                    "-t",
-                    "default",
-                    "--puppeteerConfigFile",
-                    str(cfg_path),
-                    "-c",
-                    str(mmd_cfg_path),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=env,
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            logger.debug("mmdc failed: %s", exc)
-            return None
+            if result.returncode != 0:
+                logger.debug("mmdc exited %d: %s", result.returncode, result.stderr[:500])
+                return None
 
-        if result.returncode != 0:
-            logger.debug("mmdc exited %d: %s", result.returncode, result.stderr[:500])
-            return None
+            if not svg_path.exists() or svg_path.stat().st_size < 100:
+                logger.debug("mmdc produced no usable SVG for diagram")
+                return None
 
-        if not svg_path.exists() or svg_path.stat().st_size < 100:
-            logger.debug("mmdc produced no usable SVG for diagram")
-            return None
+            return svg_path.read_text(encoding="utf-8")
 
-        return svg_path.read_text(encoding="utf-8")
+    svg = _run(elk)
+    if svg is None and elk:
+        # ELK layout package may be absent in this mmdc build — retry without it
+        # so the diagram still renders with brand theming (just dagre layout).
+        logger.debug("mmdc ELK render failed — retrying with default layout")
+        svg = _run(False)
+    return svg
 
 
 def _render_mermaid_kroki(mermaid_source: str) -> str | None:
@@ -406,16 +337,123 @@ def _render_mermaid_blocks(html_text: str) -> str:
         if svg is None:
             # All methods failed — keep the original code block as fallback
             return match.group(0)
-        # Wrap in a div that forces a dark, legible label colour as a safety
-        # net: any <foreignObject> label <div> or SVG <text> element inside
-        # the SVG will inherit color:#1e293b and not render white-on-white
-        # when the host page is in dark mode.
+        # Wrap in a div that forces the brand ink colour as a safety net: any
+        # <foreignObject> label <div> or SVG <text> element inside the SVG will
+        # inherit the dark token and not render white-on-white when the host
+        # page is in dark mode.
+        ink = f"#{brand_dark_text_token()}"
         return (
             '<div class="mermaid-diagram" style="overflow-x:auto;margin:1rem 0;'
-            'background:#ffffff;color:#1e293b;border-radius:6px;padding:0.5rem;">' + svg + "</div>"
+            f"background:#ffffff;color:{ink};border-radius:6px;padding:0.5rem;"
+            'font-family:Inter,system-ui,sans-serif;">' + svg + "</div>"
         )
 
     return _MERMAID_CODE_RE.sub(_replace, html_text)
+
+
+def _render_d2_to_svg(d2_source: str) -> str | None:
+    """Render a D2 diagram source to an SVG string, brand-themed.
+
+    Prepends the Innovation Ways D2 theme-overrides preamble, then renders with
+    the local ``d2`` binary (ELK layout, native SVG — no browser). Falls back to
+    the Kroki.io D2 endpoint when the binary is unavailable. Returns None if all
+    methods fail.
+    """
+    branded = ensure_d2_brand(d2_source)
+
+    svg = _render_d2_local(branded)
+    if svg is not None:
+        return svg
+
+    svg = _render_d2_kroki(branded)
+    if svg is not None:
+        logger.debug("Used Kroki.io fallback for a D2 diagram")
+    return svg
+
+
+def _render_d2_local(d2_source: str) -> str | None:
+    """Render D2 to SVG using the local ``d2`` binary. None on failure/absence."""
+    if _D2_BINARY is None or not _D2_BINARY.exists():
+        return None
+    with tempfile.TemporaryDirectory() as tmpdir:
+        in_path = Path(tmpdir) / "diagram.d2"
+        out_path = Path(tmpdir) / "diagram.svg"
+        in_path.write_text(d2_source, encoding="utf-8")
+        try:
+            result = subprocess.run(  # noqa: S603
+                [
+                    str(_D2_BINARY),
+                    "--layout",
+                    d2_layout(),
+                    "--pad",
+                    "24",
+                    str(in_path),
+                    str(out_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            logger.debug("d2 failed: %s", exc)
+            return None
+        if result.returncode != 0:
+            logger.debug("d2 exited %d: %s", result.returncode, result.stderr[:500])
+            return None
+        if not out_path.exists() or out_path.stat().st_size < 100:
+            logger.debug("d2 produced no usable SVG for diagram")
+            return None
+        return out_path.read_text(encoding="utf-8")
+
+
+def _render_d2_kroki(d2_source: str) -> str | None:
+    """Render D2 to SVG via the Kroki.io REST API (fallback). None on error."""
+    import base64
+    import zlib
+
+    try:
+        compressed = zlib.compress(d2_source.encode("utf-8"), 9)
+        encoded = base64.urlsafe_b64encode(compressed).decode("ascii")
+        url = f"https://kroki.io/d2/svg/{encoded}"
+        result = subprocess.run(  # noqa: S603
+            ["curl", "-sf", "--max-time", "15", url],  # noqa: S607
+            capture_output=True,
+            timeout=20,
+        )
+        if result.returncode != 0:
+            logger.debug("Kroki.io D2 curl failed (rc=%d)", result.returncode)
+            return None
+        svg = result.stdout.decode("utf-8", errors="replace")
+        if "<svg" not in svg:
+            logger.debug("Kroki.io returned non-SVG content for D2")
+            return None
+        return svg
+    except Exception as exc:
+        logger.debug("Kroki.io D2 fallback failed: %s", exc)
+        return None
+
+
+def _render_d2_blocks(html_text: str) -> str:
+    """Replace ``<pre><code class="language-d2">`` blocks with inline brand SVGs.
+
+    Falls back to the original ``<pre><code>`` block when rendering fails, so the
+    document still displays the raw D2 source.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        import html as html_mod
+
+        raw = html_mod.unescape(match.group(1))
+        svg = _render_d2_to_svg(raw)
+        if svg is None:
+            return match.group(0)
+        ink = f"#{brand_dark_text_token()}"
+        return (
+            '<div class="d2-diagram" style="overflow-x:auto;margin:1rem 0;'
+            f'background:#ffffff;color:{ink};border-radius:6px;padding:0.5rem;">' + svg + "</div>"
+        )
+
+    return _D2_CODE_RE.sub(_replace, html_text)
 
 
 TYPE_MAP = {
@@ -457,10 +495,16 @@ def render_markdown_with_callouts(text: str | None, render_mermaid: bool = True)
     blocks are rendered to inline SVG via mmdc before the HTML is returned.
     If mmdc is unavailable or a diagram fails to render, the original code block
     is preserved as a fallback.
+
+    Fenced ``d2`` blocks are ALWAYS rendered server-side (regardless of
+    ``render_mermaid``) because, unlike Mermaid, D2 has no client-side renderer —
+    leaving them unrendered would show raw DSL on the page.
     """
     result = render_markdown(text)
     if render_mermaid and "language-mermaid" in result:
         result = _render_mermaid_blocks(result)
+    if "language-d2" in result:
+        result = _render_d2_blocks(result)
     return _convert_callout_blockquotes(result)
 
 

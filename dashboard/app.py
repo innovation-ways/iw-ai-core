@@ -469,6 +469,12 @@ def create_app() -> FastAPI:
 
     templates.env.globals["_e2e_mode"] = get_e2e_mode()
 
+    # Innovation Ways brand globals (palette, Mermaid theme, embedded Inter,
+    # logo markup) — single source of truth from doc-system/brand/brand.json.
+    from dashboard.utils.branding import brand_jinja_globals
+
+    templates.env.globals.update(brand_jinja_globals())
+
     app.state.templates = templates
 
     # Health check endpoint (used by browser_verification steps and monitoring)

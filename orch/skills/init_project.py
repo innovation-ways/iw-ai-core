@@ -52,6 +52,7 @@ class InitProjectResult:
     created_files: list[str] = field(default_factory=list)
     skills_synced: int = 0
     agents_synced: int = 0
+    assets_synced: int = 0
     db_rows_created: list[str] = field(default_factory=list)
     projects_toml_updated: bool = False
 
@@ -200,5 +201,16 @@ def init_project(
         + agent_sync.opencode_agents_synced
         + agent_sync.opencode_commands_synced
     )
+
+    # ------------------------------------------------------------------
+    # 8. Sync Innovation Ways brand assets (logos, icons) into the project
+    # ------------------------------------------------------------------
+    from orch.skills.sync_assets import ASSETS_REL_PATH, sync_assets
+
+    assets_src = root / ASSETS_REL_PATH
+    asset_sync = sync_assets(repo_path, assets_src)
+    result.assets_synced = len(asset_sync.copied)
+    if asset_sync.copied:
+        result.created_files.append("ai-dev/iw-assets/")
 
     return result
