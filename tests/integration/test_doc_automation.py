@@ -688,6 +688,85 @@ class TestConfigPanel:
         jobs = svc.get_queued_jobs("test-proj")
         assert len(jobs) >= 1
 
+    def test_regenerate_all_queues_every_doc(self, client: TestClient, db_session: Session) -> None:
+        """POST /api/docs/regenerate-all queues a job for every non-research doc, fresh or stale."""
+        _make_project(db_session, repo_root="/repos/test")
+        _make_doc(db_session, doc_id="module-auth", source_paths=["src/auth/mod.rs"])
+        _make_doc(db_session, doc_id="module-users", source_paths=["src/users/mod.rs"])
+        db_session.flush()
+
+        response = client.post("/project/test-proj/api/docs/regenerate-all")
+        assert response.status_code == 200
+
+        svc = DocService(db_session)
+        jobs = svc.get_queued_jobs("test-proj")
+        assert len(jobs) == 2
+
+    def test_regenerate_all_skips_in_flight_docs(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """A doc already running is not re-queued; clicking again is idempotent."""
+        _make_project(db_session, repo_root="/repos/test")
+        _make_doc(db_session, doc_id="module-auth", source_paths=["src/auth/mod.rs"])
+        db_session.flush()
+
+        first = client.post("/project/test-proj/api/docs/regenerate-all")
+        assert first.status_code == 200
+
+        svc = DocService(db_session)
+        assert len(svc.get_queued_jobs("test-proj")) == 1
+
+        second = client.post("/project/test-proj/api/docs/regenerate-all")
+        assert second.status_code == 200
+        # The still-queued job blocks a duplicate, so the count stays at one.
+        assert len(svc.get_queued_jobs("test-proj")) == 1
+
+    def test_regenerate_all_excludes_research_docs(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """Research docs live in their own view and must not be queued by Generate ALL."""
+        _make_project(db_session, repo_root="/repos/test")
+        _make_doc(db_session, doc_id="module-auth", source_paths=["src/auth/mod.rs"])
+        research = ProjectDoc(
+            id="test-proj:R-00001",
+            project_id="test-proj",
+            doc_id="R-00001",
+            title="Some Research",
+            slug="r-00001",
+            doc_type=DocType.research,
+            tier=DocTier.human_authored,
+            editorial_category=EditorialCategory.technical,
+            status=DocStatus.draft,
+            audience=["developers"],
+            source_paths=[],
+            content="# Research\n",
+            generated_at=datetime.now(UTC),
+        )
+        db_session.add(research)
+        db_session.flush()
+
+        response = client.post("/project/test-proj/api/docs/regenerate-all")
+        assert response.status_code == 200
+
+        svc = DocService(db_session)
+        jobs = svc.get_queued_jobs("test-proj")
+        assert len(jobs) == 1
+        assert jobs[0].doc_id == "test-proj:module-auth"
+
+    def test_regenerate_all_triggers_running_jobs_reload(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """The response carries an HX-Trigger so the running-jobs strip refreshes."""
+        _make_project(db_session, repo_root="/repos/test")
+        _make_doc(db_session, doc_id="module-auth", source_paths=["src/auth/mod.rs"])
+        db_session.flush()
+
+        response = client.post("/project/test-proj/api/docs/regenerate-all")
+        assert response.status_code == 200
+        trigger = response.headers.get("HX-Trigger", "")
+        assert trigger.find("runningJobsReload") != -1
+        assert trigger.find("docsRegenerated") != -1
+
     def test_stale_summary_route(
         self, client: TestClient, db_session: Session, tmp_path: Path
     ) -> None:

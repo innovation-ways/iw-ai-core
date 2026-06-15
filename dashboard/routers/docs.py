@@ -965,6 +965,67 @@ def docs_regenerate_stale(
     )
 
 
+@router.post("/api/docs/regenerate-all", response_class=HTMLResponse)
+def docs_regenerate_all(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Create generation jobs for every doc in the project, skipping in-flight ones.
+
+    Iterates the project's full doc catalogue and enqueues a DocGenerationJob for
+    each document that does not already have a running or queued job, so clicking
+    the button repeatedly never double-queues the same doc.
+
+    Args:
+        project_id: Project identifier.
+        db: Request-scoped DB session.
+
+    Returns:
+        htmx HTML fragment summarising how many jobs were queued, with an
+        ``HX-Trigger`` so the running-jobs strip reloads.
+    """
+    import json
+
+    from orch.db.models import DocGenerationJob
+
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+
+    # Pull the whole catalogue — a large limit so big projects aren't truncated.
+    # Exclude research docs to match exactly what the docs-library list shows.
+    all_docs = [
+        d for d in svc.list_docs(project_id, limit=10_000) if d.doc_type != DocType.research
+    ]
+
+    active_doc_ids = {
+        row[0]
+        for row in db.query(DocGenerationJob.doc_id)
+        .filter(
+            DocGenerationJob.project_id == project_id,
+            DocGenerationJob.status.in_([JobStatus.queued, JobStatus.running]),
+        )
+        .all()
+    }
+
+    created_count = 0
+    skipped_count = 0
+    for doc in all_docs:
+        if doc.id in active_doc_ids:
+            skipped_count += 1
+            continue
+        svc.create_doc_job(project_id, doc.doc_id, trigger_reason="user:regenerate-all")
+        created_count += 1
+    db.commit()
+
+    skipped_note = f" ({skipped_count} already in progress)" if skipped_count else ""
+    return HTMLResponse(
+        f'<div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg '
+        f'text-sm text-green-700">Queued {created_count} job'
+        f"{'s' if created_count != 1 else ''} for regeneration{skipped_note}</div>",
+        headers={"HX-Trigger": json.dumps({"docsRegenerated": {}, "runningJobsReload": None})},
+    )
+
+
 @router.get("/api/docs/{doc_id}/diff", response_class=HTMLResponse)
 def docs_diff(
     project_id: str,
