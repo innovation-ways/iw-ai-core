@@ -7,6 +7,7 @@
   <style>
     /* Embedded Inter (base64 woff2) so the brand font renders in headless
        Chromium PDF regardless of host fonts. Single source: brand.json. */
+    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-generated @font-face CSS from trusted brand.json, not user input #}
     {{ iw_inter_font_face_css | safe }}
 
     :root {

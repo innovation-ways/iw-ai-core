@@ -1,8 +1,8 @@
 """I-00105 S05: Dashboard context gauge tests — effective-budget percentage.
 
 Verifies:
-- Per-step gauge with MiniMax-M2.7-like runtime (window=204800, max_output=131072)
-  at ~131K input → effective_pct ≥ 100%
+- Per-step gauge with MiniMax-M3 runtime (window=1,000,000, max_output=131072)
+  past its effective budget (848,928) → effective_pct ≥ 100%
 - Per-step gauge with runtime that has NULL max_output_tokens → raw-window %
 - Bar width clamps to 100% even when effective_pct > 100
 - Label allows ≥100% values (not clamped to 100 in display)
@@ -45,15 +45,18 @@ def client(db_session: Session) -> TestClient:
 
 
 # ---------------------------------------------------------------------------
-# MiniMax-M2.7-like effective-budget scenario
+# MiniMax-M3 effective-budget scenario
 # ---------------------------------------------------------------------------
 
 
 def _find_minimax_runtime(db_session) -> int | None:
-    """Return the id of the seeded MiniMax-M2.7 runtime option (if present).
+    """Return the id of the seeded MiniMax-M3 runtime option (if present).
 
-    The testcontainer DB runs the production migration which backfills
-    ``pi/minimax/MiniMax-M2.7`` with ``max_output_tokens=131072``.
+    The testcontainer DB runs the production migrations: ``2be8dc12874f``
+    backfills the pi MiniMax row with ``max_output_tokens=131072``,
+    ``08850d673ff6`` repoints its model from ``minimax/MiniMax-M2.7`` to
+    ``minimax/MiniMax-M3``, and ``53e45cb21742`` widens its
+    ``context_window_tokens`` to 1,000,000.
     """
     from sqlalchemy import select
 
@@ -62,7 +65,7 @@ def _find_minimax_runtime(db_session) -> int | None:
     return db_session.execute(
         select(AgentRuntimeOption.id).where(
             AgentRuntimeOption.cli_tool == "pi",
-            AgentRuntimeOption.model == "minimax/MiniMax-M2.7",
+            AgentRuntimeOption.model == "minimax/MiniMax-M3",
             AgentRuntimeOption.enabled.is_(True),
         )
     ).scalar_one_or_none()
@@ -169,10 +172,10 @@ class TestEffectiveContextGauge:
     def test_minimax_at_ceiling_reads_over_100_pct(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """MiniMax-M2.7 at 131K input → effective_pct ≥ 100% (not ~64%)."""
+        """MiniMax-M3 past its effective budget → effective_pct ≥ 100% (not ~95%)."""
         minimax_opt_id = _find_minimax_runtime(db_session)
         assert minimax_opt_id is not None, (
-            "MiniMax-M2.7 runtime option not found in DB — "
+            "MiniMax-M3 runtime option not found in DB — "
             "ensure the testcontainer DB runs migration 2be8dc12874f"
         )
 
@@ -180,9 +183,11 @@ class TestEffectiveContextGauge:
             db_session,
             project_id="proj-minimax",
             item_id="I-00105-GAUGE",
+            # MiniMax-M3 effective budget = 1,000,000 - 131,072 - 20,000 = 848,928.
+            # A 950K peak is past that ceiling, so effective_pct must read ≥ 100%.
             runtime_opt_id=minimax_opt_id,
-            context_tokens_peak=131072,  # at ceiling of effective budget
-            context_tokens_last=130000,
+            context_tokens_peak=950_000,  # past the ceiling of effective budget
+            context_tokens_last=940_000,
         )
 
         response = client.get(
@@ -219,10 +224,10 @@ class TestEffectiveContextGauge:
 
         pct_value = int(label_text.rstrip("%"))
         assert pct_value >= 100, (
-            f"Expected effective pct ≥ 100% for near-ceiling step, got {pct_value}%. "
-            f"MiniMax-M2.7 at 131K input: effective budget = 204800 - 131072 - 20000 = 53728 → "
-            f"131072/53728*100 ≈ 244%. "
-            f"Old raw-window calculation gave 131072/204800*100 ≈ 64%."
+            f"Expected effective pct ≥ 100% for past-ceiling step, got {pct_value}%. "
+            f"MiniMax-M3 at 950K input: effective budget = 1000000 - 131072 - 20000 = 848928 → "
+            f"950000/848928*100 ≈ 112%. "
+            f"Old raw-window calculation gave 950000/1000000*100 = 95%."
         )
 
     def test_minimax_bar_width_clamps_to_100(self, client: TestClient, db_session: Session) -> None:
@@ -235,8 +240,8 @@ class TestEffectiveContextGauge:
             project_id="proj-bar",
             item_id="I-00105-BAR",
             runtime_opt_id=minimax_opt_id,
-            context_tokens_peak=131072,
-            context_tokens_last=130000,
+            context_tokens_peak=950_000,  # past MiniMax-M3 effective budget (848,928)
+            context_tokens_last=940_000,
         )
 
         response = client.get(

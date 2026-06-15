@@ -456,8 +456,10 @@ def test_pi_catalogue_resolves_minimax_and_codex(
     ``agent_runtime_options``. This test asserts the cascade resolver
     surfaces both with the exact metadata the design doc specifies.
 
-    AC2 invariants pinned here:
-      - ``(pi, minimax/MiniMax-M2.7)`` → ``display_name="Pi + MiniMax 2.7"``,
+    AC2 invariants pinned here (after migrations ``08850d673ff6`` /
+    ``65084ea7e4b4`` swapped the MiniMax row from M2.7 to M3 and refreshed
+    its label):
+      - ``(pi, minimax/MiniMax-M3)`` → ``display_name="Pi + MiniMax M3"``,
         ``enabled=True``, ``sort_order=25``. Migration ``0f11be8f2147``
         promoted this row to the catalogue default, so ``is_default=True``.
       - ``(pi, openai/gpt-5.3-codex)`` → ``display_name="Pi + GPT-5.3 Codex"``,
@@ -467,7 +469,7 @@ def test_pi_catalogue_resolves_minimax_and_codex(
     # getattr, so any object with cli_tool / model attributes works).
     project_minimax = MagicMock()
     project_minimax.cli_tool = "pi"
-    project_minimax.model = "minimax/MiniMax-M2.7"
+    project_minimax.model = "minimax/MiniMax-M3"
 
     step = MagicMock()
     step.agent_runtime_option_id = None
@@ -484,8 +486,8 @@ def test_pi_catalogue_resolves_minimax_and_codex(
     # "cli_tool contains pi". A misseeded row with cli_tool="Pi" or
     # display_name="Pi + MiniMax M2.7" (extra space) would fail here.
     assert resolved.cli_tool == "pi"
-    assert resolved.model == "minimax/MiniMax-M2.7"
-    assert resolved.display_name == "Pi + MiniMax 2.7"
+    assert resolved.model == "minimax/MiniMax-M3"
+    assert resolved.display_name == "Pi + MiniMax M3"
     assert resolved.enabled is True
     assert resolved.is_default is True
     assert resolved.sort_order == 25
@@ -508,11 +510,11 @@ def test_pi_catalogue_resolves_minimax_and_codex(
     assert resolved_codex.sort_order == 26
 
     # AC5 / AC2 catalogue invariant: there is exactly one is_default=true
-    # row, and after migration ``0f11be8f2147`` it is Pi + MiniMax 2.7.
-    # The ``.one()`` also guards against a second is_default=true row
-    # slipping into the catalogue.
+    # row, and after migration ``0f11be8f2147`` it is Pi + MiniMax (now M3
+    # per ``08850d673ff6``). The ``.one()`` also guards against a second
+    # is_default=true row slipping into the catalogue.
     default = (
         db_session.query(AgentRuntimeOption).filter(AgentRuntimeOption.is_default.is_(True)).one()
     )
     assert default.cli_tool == "pi"
-    assert default.model == "minimax/MiniMax-M2.7"
+    assert default.model == "minimax/MiniMax-M3"

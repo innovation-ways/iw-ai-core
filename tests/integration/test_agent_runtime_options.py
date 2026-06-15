@@ -141,7 +141,9 @@ class TestAgentRuntimeOptionsTable:
         migration. Migration ``0f11be8f2147`` then flipped the catalogue
         default from the OpenCode + MiniMax 2.7 row to the
         Pi + MiniMax 2.7 row. Migration ``b4c8opus48rt`` added Claude Code
-        + Opus 4.8 at sort_order 55.
+        + Opus 4.8 at sort_order 55. Migration ``08850d673ff6`` then
+        repointed both opencode/pi MiniMax rows from
+        ``minimax/MiniMax-M2.7`` to ``minimax/MiniMax-M3``.
         """
         rows = db_session.execute(
             text("""
@@ -151,10 +153,10 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         assert len(rows) == 9, f"Expected 9 rows, got {len(rows)}"
-        assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", False, 10)
+        assert rows[0] == ("opencode", "minimax/MiniMax-M3", False, 10)
         assert rows[1] == ("opencode", "openai/gpt-5.3-codex", False, 15)
         assert rows[2] == ("opencode", "claude-sonnet-4-6", False, 20)
-        assert rows[3] == ("pi", "minimax/MiniMax-M2.7", True, 25)
+        assert rows[3] == ("pi", "minimax/MiniMax-M3", True, 25)
         assert rows[4] == ("pi", "openai/gpt-5.3-codex", False, 26)
         assert rows[5] == ("opencode", "claude-opus-4-7", False, 30)
         assert rows[6] == ("claude", "claude-sonnet-4-6", False, 40)
@@ -169,7 +171,7 @@ class TestAgentRuntimeOptionsTable:
             INSERT INTO agent_runtime_options
             (cli_tool, model, cli_label, model_label, display_name,
              is_default, enabled, sort_order)
-            VALUES ('opencode', 'minimax/MiniMax-M2.7', 'X', 'X', 'X', false, true, 99)
+            VALUES ('opencode', 'minimax/MiniMax-M3', 'X', 'X', 'X', false, true, 99)
         """)
         with pytest.raises(IntegrityError):
             db_session.execute(stmt)

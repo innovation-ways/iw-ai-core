@@ -959,12 +959,14 @@ iw
 ├── doc-job-done        Mark a running DocGenerationJob as completed (or failed)
 ├── doc-job-status      Show the full context of a DocGenerationJob (read-only)
 ├── docs-export         Export project docs as ZIP bundles
+├── validate-diagrams   Validate Mermaid/D2 diagrams in a document
 ├── search              Full-text search across work items
 ├── regression-classify Show or accept heuristic regression-introducer suggestions for an Incident
 ├── worktree-status     Show git health of all active agent worktrees
 ├── sync-skills         Sync platform skills to a project's .claude/skills/ directory
 ├── sync-agents         Sync platform agents and commands to a project
 ├── sync-templates      Sync design templates to all registered projects
+├── sync-assets         Sync Innovation Ways brand assets to all registered projects
 ├── init-project        Initialize a new project for IW AI Core management
 ├── db-identity         Show or verify the orchestration DB instance identity fingerprint
 │   ├── show            Show live DB instance UUID, expected UUID, and mode
