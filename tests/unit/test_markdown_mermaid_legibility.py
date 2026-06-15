@@ -129,3 +129,39 @@ class TestMermaidLegibility:
             "render_mermaid=False must NOT produce an SVG; "
             "the raw mermaid block must be preserved for client-side rendering"
         )
+
+    def test_render_mermaid_false_sanitizes_elk_on_non_flowchart(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """render_mermaid=False sanitises each block so the client-side render
+        does not choke on a ``layout: elk`` directive applied to a stateDiagram
+        (the browser has no ELK engine for it → "Unknown layout algorithm: elk",
+        shown as a "Syntax error in text" diagram). Flowchart blocks keep elk.
+        """
+        import html as html_mod
+
+        import dashboard.utils.markdown as md_mod
+
+        state_md = (
+            "```mermaid\n"
+            "---\nconfig:\n  layout: elk\n---\n"
+            "stateDiagram-v2\n    [*] --> a\n    a --> [*]\n"
+            "```\n"
+        )
+        flow_md = "```mermaid\n---\nconfig:\n  layout: elk\n---\nflowchart TB\n    A --> B\n```\n"
+
+        state_out = html_mod.unescape(
+            md_mod.render_markdown_with_callouts(state_md, render_mermaid=False)
+        )
+        flow_out = html_mod.unescape(
+            md_mod.render_markdown_with_callouts(flow_md, render_mermaid=False)
+        )
+
+        assert state_out.find("layout: elk") == -1, (
+            "elk layout must be stripped from a stateDiagram on the client-render "
+            "path so the browser Mermaid runtime can lay it out"
+        )
+        assert flow_out.find("layout: elk") != -1, (
+            "elk layout must be preserved for flowcharts (the browser supports it)"
+        )

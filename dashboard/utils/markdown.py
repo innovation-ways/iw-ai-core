@@ -351,6 +351,32 @@ def _render_mermaid_blocks(html_text: str) -> str:
     return _MERMAID_CODE_RE.sub(_replace, html_text)
 
 
+def _sanitize_mermaid_blocks(html_text: str) -> str:
+    """Rewrite raw ``language-mermaid`` code blocks with sanitised DSL in place.
+
+    Used on the client-render path (``render_mermaid=False``), where the Mermaid
+    blocks are left as ``<pre><code class="language-mermaid">`` for the browser
+    to render. The browser runtime never runs
+    :func:`orch.diagram.sanitize.sanitize_mermaid`, so this applies the shared
+    sanitiser server-side and re-emits the (HTML-escaped) source, keeping the
+    client preview consistent with what mmdc renders for the HTML/PDF views.
+
+    Args:
+        html_text: HTML produced by the markdown converter.
+
+    Returns:
+        The HTML with each Mermaid block's source replaced by its sanitised form.
+    """
+    import html as html_mod
+
+    def _replace(match: re.Match[str]) -> str:
+        raw = html_mod.unescape(match.group(1))
+        cleaned = sanitize_mermaid(raw)
+        return f'<pre><code class="language-mermaid">{html_mod.escape(cleaned)}</code></pre>'
+
+    return _MERMAID_CODE_RE.sub(_replace, html_text)
+
+
 def _render_d2_to_svg(d2_source: str) -> str | None:
     """Render a D2 diagram source to an SVG string, brand-themed.
 
@@ -501,8 +527,18 @@ def render_markdown_with_callouts(text: str | None, render_mermaid: bool = True)
     leaving them unrendered would show raw DSL on the page.
     """
     result = render_markdown(text)
-    if render_mermaid and "language-mermaid" in result:
-        result = _render_mermaid_blocks(result)
+    if "language-mermaid" in result:
+        if render_mermaid:
+            result = _render_mermaid_blocks(result)
+        else:
+            # Client-side render path: the browser Mermaid runtime does NOT apply
+            # sanitize_mermaid, so rewrite each raw block with the sanitised DSL.
+            # Without this the client sees raw LLM DSL — e.g. a ``layout: elk``
+            # directive on a ``stateDiagram-v2``, which the browser cannot lay
+            # out ("Unknown layout algorithm: elk") and renders as a "Syntax
+            # error in text" diagram. Sanitising here keeps the client preview
+            # consistent with the server-rendered HTML/PDF.
+            result = _sanitize_mermaid_blocks(result)
     if "language-d2" in result:
         result = _render_d2_blocks(result)
     return _convert_callout_blockquotes(result)

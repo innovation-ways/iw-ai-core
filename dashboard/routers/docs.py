@@ -235,6 +235,7 @@ def docs_html_view(
             cache_file = cache_dir / f"{doc_id}-v{doc.version}.html"
             cache_file.write_bytes(fallback_html.encode("utf-8"))
             svc.update_doc(project_id, doc_id, html_path=str(cache_file))
+            db.commit()
         except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
             import logging
 
@@ -318,6 +319,7 @@ def docs_pdf_view(
         cache_file = cache_dir / f"{doc_id}-v{doc.version}.pdf"
         cache_file.write_bytes(pdf_bytes)
         svc.update_doc(project_id, doc_id, pdf_path=str(cache_file))
+        db.commit()
     except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
         import logging
 
@@ -398,6 +400,7 @@ def docs_pdf(
         cache_file = cache_dir / f"{doc_id}-v{doc.version}.pdf"
         cache_file.write_bytes(pdf_bytes)
         svc.update_doc(project_id, doc_id, pdf_path=str(cache_file))
+        db.commit()
     except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
         import logging
 

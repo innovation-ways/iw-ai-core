@@ -282,7 +282,7 @@ class TestDocsDetailClientSideDiagram:
 class TestHtmlViewCaching:
     """Test that docs_html_view writes and serves from a version-keyed cache."""
 
-    def test_i00080_html_view_caches_to_html_path_keyed_by_version(  # noqa: assertion-scanner
+    def test_i00080_html_view_caches_to_html_path_keyed_by_version(
         self,
         client: TestClient,
         db_session: Session,
@@ -290,9 +290,9 @@ class TestHtmlViewCaching:
         tmp_path: Path,
     ) -> None:
         """After GET /docs/{doc_id}/html-view on a doc with no html_path,
-        the doc's html_path is set and points at an existing file under
-        docs/.generated whose filename contains v{version}.
-        A second GET serves the cached file without re-rendering.
+        the doc's html_path is persisted and points at an existing file under
+        docs/.generated whose filename contains v{version}; a second GET serves
+        the cached file without re-rendering.
         """
         test_project.repo_root = str(tmp_path)
         db_session.commit()
@@ -321,6 +321,36 @@ class TestHtmlViewCaching:
             """Spy wrapper that records calls to render_markdown_with_callouts."""
             call_count["renders"] += 1
             return fake_render_html
+
+        with patch(
+            "dashboard.routers.docs.render_markdown_with_callouts",
+            side_effect=spy_render,
+        ):
+            first = client.get(f"/project/{test_project.id}/docs/html-cache-test/html-view")
+            assert first.status_code == 200
+            assert call_count["renders"] == 1, "first view must render once"
+
+            # html_path must be PERSISTED (the route commits after update_doc).
+            db_session.expire_all()
+            from orch.doc_service import DocService
+
+            svc = DocService(db_session)
+            cached_doc = svc.get_doc(test_project.id, "html-cache-test")
+            assert cached_doc is not None
+            assert cached_doc.html_path is not None, (
+                "html_path must be persisted after a successful render so repeat "
+                "views serve from cache instead of re-rendering every diagram"
+            )
+            cache_path = Path(cached_doc.html_path)
+            assert cache_path.exists(), "cached html file must exist on disk"
+            assert cache_path.name.find("v3") != -1, (
+                f"cache filename must be keyed by version; got {cache_path.name}"
+            )
+
+            # Second GET must serve the cached file without re-rendering.
+            second = client.get(f"/project/{test_project.id}/docs/html-cache-test/html-view")
+            assert second.status_code == 200
+            assert call_count["renders"] == 1, "second view must hit cache, not re-render"
 
     def test_i00080_html_view_does_not_cache_degraded_render(
         self,
