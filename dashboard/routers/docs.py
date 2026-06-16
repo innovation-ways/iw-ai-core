@@ -210,8 +210,10 @@ def docs_html_view(
   .iw-lockup {{ display: inline-flex; align-items: center; gap: 8px; margin-bottom: 24px;
          padding-bottom: 16px; border-bottom: 2px solid {accent}; width: 100%; }}
   .iw-lockup-mark svg {{ height: 26px; width: 26px; display: block; }}
-  .iw-lockup-name {{ font-weight: 600; font-size: 15px; letter-spacing: -0.01em; color: {ink}; }}
-  h1,h2,h3 {{ color: {ink}; letter-spacing: -0.01em; }}
+  .iw-lockup-name {{ font-family: 'Space Grotesk','Inter',system-ui,sans-serif; font-weight: 600;
+         font-size: 15px; letter-spacing: -0.01em; color: {ink}; }}
+  h1,h2,h3,h4 {{ font-family: 'Space Grotesk','Inter',system-ui,sans-serif; color: {ink};
+         letter-spacing: -0.01em; }}
   h2 {{ border-bottom: 1px solid {border}; padding-bottom: 6px; }}
   a {{ color: {accent_strong}; }}
   table {{ border-collapse: collapse; width: 100%; }}

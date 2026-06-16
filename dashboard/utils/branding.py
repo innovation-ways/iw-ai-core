@@ -27,10 +27,15 @@ logger = logging.getLogger(__name__)
 _PLATFORM_ROOT = Path(__file__).resolve().parents[2]
 _BRAND_JSON = _PLATFORM_ROOT / "ai-dev" / "doc-system" / "brand" / "brand.json"
 _INTER_FONT_DIR = _PLATFORM_ROOT / "dashboard" / "static" / "fonts" / "inter"
+_SPACE_GROTESK_FONT_DIR = _PLATFORM_ROOT / "dashboard" / "static" / "fonts" / "space-grotesk"
 _ASSETS_DIR = _PLATFORM_ROOT / "ai-dev" / "iw-assets"
 
-# Inter weights shipped as subsetted woff2 in the static fonts dir.
+# Brand fonts shipped as subsetted woff2 in the static fonts dir.
+# Inter is the body face; Space Grotesk is the display/heading face (matches the
+# innovation-ways.com website). Both are embedded as base64 so they render in
+# headless-Chromium PDF regardless of host fonts.
 _INTER_WEIGHTS = (("400", 400), ("500", 500), ("600", 600), ("700", 700))
+_SPACE_GROTESK_WEIGHTS = (("400", 400), ("500", 500), ("600", 600), ("700", 700))
 
 # Mermaid diagram types whose graph-based layout benefits from the ELK engine.
 # Sequence/gantt/pie/journey/timeline ignore (or break under) a layout override,
@@ -251,26 +256,38 @@ def ensure_d2_brand(diagram_source: str) -> str:
     return preamble + diagram_source
 
 
-@lru_cache(maxsize=1)
-def inter_font_face_css() -> str:
-    """Return ``@font-face`` rules embedding Inter as base64 woff2 (cached).
-
-    Embedding guarantees the brand font renders in headless-Chromium PDF output
-    regardless of whether Inter is installed on the host. Returns an empty string
-    if no font files are found.
-    """
+def _font_face_rules(
+    family: str, font_dir: Path, file_prefix: str, weights: tuple[tuple[str, int], ...]
+) -> list[str]:
+    """Build base64-embedded ``@font-face`` rules for one family (helper)."""
     rules: list[str] = []
-    for suffix, weight in _INTER_WEIGHTS:
-        font_file = _INTER_FONT_DIR / f"Inter-{suffix}.woff2"
+    for suffix, weight in weights:
+        font_file = font_dir / f"{file_prefix}-{suffix}.woff2"
         try:
             b64 = base64.b64encode(font_file.read_bytes()).decode("ascii")
         except OSError:
             continue
         rules.append(
-            "@font-face{font-family:'Inter';font-style:normal;"
+            f"@font-face{{font-family:'{family}';font-style:normal;"
             f"font-weight:{weight};font-display:swap;"
             f"src:url(data:font/woff2;base64,{b64}) format('woff2');}}"
         )
+    return rules
+
+
+@lru_cache(maxsize=1)
+def inter_font_face_css() -> str:
+    """Return ``@font-face`` rules embedding the brand fonts as base64 woff2 (cached).
+
+    Embeds both Inter (body) and Space Grotesk (display/headings) so the brand
+    fonts render in headless-Chromium PDF output regardless of host fonts. The
+    name is kept for backward compatibility with templates that reference
+    ``iw_inter_font_face_css``. Returns an empty string if no font files exist.
+    """
+    rules = _font_face_rules("Inter", _INTER_FONT_DIR, "Inter", _INTER_WEIGHTS)
+    rules += _font_face_rules(
+        "Space Grotesk", _SPACE_GROTESK_FONT_DIR, "SpaceGrotesk", _SPACE_GROTESK_WEIGHTS
+    )
     return "".join(rules)
 
 
@@ -347,6 +364,7 @@ def brand_jinja_globals() -> dict[str, Any]:
         "iw_brand_mermaid_config": mermaid_config(),
         "iw_inter_font_face_css": inter_font_face_css(),
         "iw_logo_mark_svg": logo_svg("mark") or "",
+        "iw_logo_mark_white_svg": logo_svg("markWhite") or logo_svg("mark") or "",
         "iw_logo_data_uri": logo_data_uri("horizontal") or "",
         "iw_brand_lockup_html": brand_lockup_html(),
     }

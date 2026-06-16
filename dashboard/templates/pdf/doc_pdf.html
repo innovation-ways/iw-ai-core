@@ -2,12 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ doc.title }}</title>
+  <script>window.PagedConfig = { auto: false, before: async () => { if (window.buildLayout) window.buildLayout(); } };</script>
   <style>
-    /* Embedded Inter (base64 woff2) so the brand font renders in headless
-       Chromium PDF regardless of host fonts. Single source: brand.json. */
-    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-generated @font-face CSS from trusted brand.json, not user input #}
+    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-generated @font-face CSS (Inter + Space Grotesk) from trusted brand.json, not user input #}
     {{ iw_inter_font_face_css | safe }}
 
     :root {
@@ -15,213 +13,212 @@
       --accent: {{ iw_brand_colors.accent | default('#0D9488') }};
       --accent-strong: {{ iw_brand_colors.accentStrong | default('#115E59') }};
       --accent-tint: {{ iw_brand_colors.accentTint | default('#F0FDFA') }};
+      --accent-light: {{ iw_brand_colors.accentLight | default('#CCFBF1') }};
       --muted: {{ iw_brand_colors.textMuted | default('#71757E') }};
-      --border: {{ iw_brand_colors.border | default('#E2E8F0') }};
+      --border: {{ iw_brand_colors.border | default('#E6E7E9') }};
+      --surface: {{ iw_brand_colors.surface | default('#F7F7F8') }};
       --surface-muted: #F1F5F9;
       --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', ui-monospace, monospace;
     }
 
+    /* ---- Paged Media: running header / footer on content pages ---- */
     @page {
       size: A4;
-      margin: 2cm;
-      @bottom-center {
-        content: counter(page);
-      }
+      margin: 20mm 18mm 18mm 18mm;
+      @top-left  { content: string(doctitle); font-family: var(--font-sans); font-size: 8pt; color: var(--muted); }
+      @top-right { content: string(chaptertitle); font-family: var(--font-sans); font-size: 8pt; color: var(--muted); }
+      @bottom-left  { content: element(footerbrand); }
+      @bottom-right { content: "Page " counter(page); font-family: var(--font-sans); font-size: 8pt; color: var(--muted); }
+    }
+    /* Full-bleed pages (cover + chapter dividers) carry no header/footer */
+    @page bleed {
+      margin: 0;
+      @top-left { content: none; } @top-right { content: none; }
+      @bottom-left { content: none; } @bottom-right { content: none; }
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
+    body { font-family: var(--font-sans); color: var(--ink); line-height: 1.6; font-size: 11pt; margin: 0; }
 
-    body {
-      font-family: var(--font-sans);
-      color: var(--ink);
-      line-height: 1.6;
-      font-size: 12px;
-    }
+    /* Footer running element: IW mark + "Innovation Ways <year>" */
+    .footerbrand { position: running(footerbrand); font-family: var(--font-sans); font-size: 8pt; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .footerbrand svg { height: 13px; width: auto; }
+    .footerbrand b { color: var(--ink); font-weight: 600; }
 
-    /* Header */
-    .doc-header {
-      border-bottom: 2px solid var(--accent);
-      padding-bottom: 1rem;
-      margin-bottom: 2rem;
-    }
+    /* ---- Cover + chapter-divider shared full-bleed layout ---- */
+    .cover, .chcover { page: bleed; break-after: page; height: 297mm; display: flex; flex-direction: column; overflow: hidden; }
+    .fb-top { flex: 0 0 38%; background: var(--ink); color: #fff; display: flex; flex-direction: column; justify-content: center; padding: 0 24mm; }
+    .fb-lockup { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-size: 19pt; font-weight: 600; letter-spacing: -0.02em; }
+    .fb-lockup svg { height: 32px; width: auto; }
+    .fb-bar { flex: 0 0 11mm; background: linear-gradient(90deg, var(--accent) 0%, var(--accent-strong) 100%); }
+    .fb-bottom { flex: 1; background: #fff; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 24mm 42mm; }
+    .fb-kicker { font-family: var(--font-display); color: var(--accent-strong); font-size: 11pt; font-weight: 600; letter-spacing: 0.10em; text-transform: uppercase; margin-bottom: 10px; }
+    .fb-title { font-family: var(--font-display); font-size: 30pt; font-weight: 700; letter-spacing: -0.02em; line-height: 1.08; color: var(--ink); }
+    .fb-title.cov-name { string-set: doctitle content(); }  /* feeds the running header (document name, top-left) */
+    .fb-meta { margin-top: 22px; font-size: 9.5pt; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; }
+    .fb-meta b { color: var(--ink); font-weight: 600; }
 
-    .iw-lockup {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.85rem;
-    }
+    /* ---- Table of contents ---- */
+    .toc { break-after: page; }
+    .toc h2 { font-family: var(--font-display); font-size: 20pt; font-weight: 700; color: var(--ink); border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin: 0 0 14px; }
+    .toc a { display: block; color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--border); padding: 9px 0; font-size: 11pt; }
+    .toc a::after { content: target-counter(attr(href url), page); float: right; color: var(--muted); }
+    .toc a .num { color: var(--accent-strong); font-weight: 600; font-family: var(--font-display); margin-right: 10px; }
 
-    .iw-lockup-mark svg {
-      height: 26px;
-      width: 26px;
-      display: block;
-    }
+    /* ---- Chapter intro page ---- */
+    .chintro { break-after: page; padding-top: 6mm; }
+    .ci-kicker { font-family: var(--font-display); color: var(--accent-strong); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10pt; }
+    .ci-title { string-set: chaptertitle content(); font-family: var(--font-display); font-size: 23pt; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 16px; color: var(--ink); }
+    .ci-rule { width: 64px; height: 3px; background: var(--accent); margin-bottom: 18px; }
+    .ci-intro { color: var(--muted); font-size: 13pt; line-height: 1.7; max-width: 78%; }
 
-    .iw-lockup-name {
-      font-weight: 600;
-      font-size: 14px;
-      letter-spacing: -0.01em;
-      color: var(--ink);
+    /* ---- Chapter body / content ---- */
+    .chbody { break-before: avoid; }
+    .content-block h2, .content-block h3, .content-block h4 {
+      font-family: var(--font-display); color: var(--ink); font-weight: 600; letter-spacing: -0.01em;
+      margin-top: 1.4em; margin-bottom: 0.5em; break-after: avoid;
     }
-
-    .doc-title {
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--ink);
-      margin: 0 0 0.5rem 0;
-    }
-
-    .doc-meta {
-      display: flex;
-      gap: 1rem;
-      font-size: 10px;
-      color: var(--muted);
-    }
-
-    .doc-meta span {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-
-    .doc-meta strong {
-      color: var(--accent-strong);
-    }
-
-    /* Content */
-    .content {
-      max-width: 100%;
-    }
-
-    .content h1, .content h2, .content h3, .content h4 {
-      color: var(--ink);
-      font-weight: 600;
-      letter-spacing: -0.01em;
-      margin-top: 1.5em;
-      margin-bottom: 0.5em;
-    }
-
-    .content h1 { font-size: 18px; }
-    .content h2 { font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
-    .content h3 { font-size: 14px; }
-
-    .content p {
-      margin-bottom: 0.75em;
-      line-height: 1.7;
-    }
-
-    .content ul, .content ol {
-      padding-left: 1.5em;
-      margin-bottom: 0.75em;
-    }
-
-    .content li {
-      margin-bottom: 0.25em;
-      line-height: 1.6;
-    }
-
-    .content code {
-      font-family: var(--font-mono);
-      font-size: 10px;
-      background: var(--surface-muted);
-      padding: 0.1em 0.3em;
-      border-radius: 3px;
-    }
-
-    .content pre {
-      background: var(--surface-muted);
-      border: 1px solid var(--border);
-      padding: 1em;
-      overflow-x: auto;
-      margin-bottom: 1em;
-      font-size: 10px;
-    }
-
-    .content pre code {
-      background: none;
-      padding: 0;
-      font-size: 10px;
-    }
-
-    .content table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 1em;
-      font-size: 11px;
-    }
-
-    .content th, .content td {
-      border: 1px solid var(--border);
-      padding: 0.4em 0.75em;
-      text-align: left;
-    }
-
-    .content th {
-      background: var(--accent-tint);
-      color: var(--accent-strong);
-      font-weight: 600;
-    }
-
-    .content blockquote {
-      border-left: 3px solid var(--accent);
-      padding-left: 1em;
-      color: var(--muted);
-      margin: 1em 0;
-      font-style: italic;
-    }
-
-    .content a {
-      color: var(--accent-strong);
-      text-decoration: underline;
-    }
-
-    .content img {
-      max-width: 100%;
-    }
-
-    .mermaid-diagram svg {
-      max-width: 100%;
-      height: auto;
-    }
-
-    /* Footer */
-    .doc-footer {
-      margin-top: 2rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      font-size: 9px;
-      color: var(--muted);
-      display: flex;
-      justify-content: space-between;
-    }
+    .content-block h2 { font-size: 16px; }
+    .content-block h3 { font-size: 14px; }
+    .content-block h4 { font-size: 12px; }
+    .content-block p { margin: 0 0 0.75em; line-height: 1.7; }
+    .content-block ul, .content-block ol { padding-left: 1.4em; margin-bottom: 0.75em; }
+    .content-block li { margin-bottom: 0.25em; line-height: 1.6; }
+    .content-block code { font-family: var(--font-mono); font-size: 9.5px; background: var(--surface-muted); padding: 0.1em 0.3em; border-radius: 3px; }
+    .content-block pre { background: var(--surface-muted); border: 1px solid var(--border); padding: 1em; overflow-x: auto; margin-bottom: 1em; font-size: 9.5px; border-radius: 4px; break-inside: avoid; }
+    .content-block pre code { background: none; padding: 0; }
+    .content-block table { width: 100%; border-collapse: collapse; margin-bottom: 1em; font-size: 10.5px; break-inside: avoid; }
+    .content-block th, .content-block td { border: 1px solid var(--border); padding: 0.45em 0.7em; text-align: left; vertical-align: top; }
+    .content-block th { background: var(--accent-tint); color: var(--accent-strong); font-weight: 600; }
+    .content-block blockquote { border-left: 3px solid var(--accent); padding: 0.2em 0 0.2em 1em; color: var(--muted); margin: 1em 0; }
+    .content-block a { color: var(--accent-strong); text-decoration: underline; }
+    .content-block img, .content-block svg { max-width: 100%; height: auto; }
+    .content-block figure, .content-block .mermaid-diagram { break-inside: avoid; text-align: center; margin: 1em 0; }
+    .content-block .mermaid-diagram svg { max-width: 100%; height: auto; }
+    /* Callouts (render_markdown_with_callouts) */
+    .content-block .callout { border: 1px solid var(--border); border-left: 4px solid var(--accent); background: var(--surface); border-radius: 4px; padding: 0.8em 1em; margin: 1em 0; break-inside: avoid; }
+    .content-block .callout-title { font-weight: 600; color: var(--accent-strong); margin-bottom: 0.3em; }
+    .content-block .callout-warning, .content-block .callout-danger { border-left-color: #B45309; }
+    .content-block .callout-warning .callout-title, .content-block .callout-danger .callout-title { color: #92400E; }
   </style>
 </head>
 <body>
-  <div class="doc-header">
-    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — inline brand SVG/markup from trusted brand.json #}
-    {{ iw_brand_lockup_html | safe }}
-    <h1 class="doc-title">{{ doc.title }}</h1>
-    <div class="doc-meta">
-      <span><strong>Type:</strong> {{ doc.doc_type.value|title }}</span>
-      <span><strong>Version:</strong> v{{ doc.version }}</span>
-      <span><strong>Status:</strong> {{ doc.status.value|title }}</span>
-      <span><strong>Generated:</strong> {{ generated_at }}</span>
-    </div>
-  </div>
+  {# Document metadata for the layout builder. tojson safely escapes embedded SVG markup. #}
+  <script type="application/json" id="docmeta">
+  {
+    "title": {{ doc.title | tojson }},
+    "kicker": {{ (doc.doc_type.value | replace('_',' ') | title) | tojson }},
+    "version": {{ ('v' ~ doc.version) | tojson }},
+    "status": {{ (doc.status.value | title) | tojson }},
+    "generated": {{ generated_at | tojson }},
+    "project": {{ (project.display_name | default('')) | tojson }},
+    "brandName": {{ (iw_brand.name | default('Innovation Ways')) | tojson }},
+    "markWhiteSvg": {{ (iw_logo_mark_white_svg | default('')) | tojson }},
+    "markSvg": {{ (iw_logo_mark_svg | default('')) | tojson }}
+  }
+  </script>
 
   <div class="content">
     {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted ProjectDoc content #}
     {{ rendered_content | safe }}
   </div>
 
-  <div class="doc-footer">
-    <span>{{ iw_brand.name | default('Innovation Ways') }} · Generated by IW AI Core</span>
-    <span>{{ project.display_name }}</span>
-  </div>
+  <script>
+  window.buildLayout = function () {
+    var meta = JSON.parse(document.getElementById('docmeta').textContent);
+    var year = (meta.generated || '').slice(0, 4) || '2026';
+    var content = document.querySelector('.content');
+    if (!content) return;
+
+    var el = function (tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+
+    // Full-bleed divider (cover + chapter dividers share the layout)
+    function divider(kind, kicker, title, id) {
+      var sec = el('section', kind);
+      if (id) sec.id = id;
+      var top = el('div', 'fb-top');
+      top.appendChild(el('div', 'fb-lockup', (meta.markWhiteSvg || '') + '<span>' + meta.brandName + '</span>'));
+      sec.appendChild(top);
+      sec.appendChild(el('div', 'fb-bar'));
+      var bot = el('div', 'fb-bottom');
+      if (kicker) bot.appendChild(el('div', 'fb-kicker', kicker));
+      var t = el('div', 'fb-title', title);
+      if (kind === 'cover') t.classList.add('cov-name');  // sets doctitle string
+      bot.appendChild(t);
+      if (kind === 'cover') {
+        var m = el('div', 'fb-meta',
+          '<span><b>Version</b> ' + meta.version + '</span>' +
+          '<span><b>Status</b> ' + meta.status + '</span>' +
+          (meta.project ? '<span><b>Project</b> ' + meta.project + '</span>' : '') +
+          '<span><b>Generated</b> ' + (meta.generated || '').slice(0, 10) + '</span>');
+        bot.appendChild(m);
+      }
+      sec.appendChild(bot);
+      return sec;
+    }
+
+    // Split rendered content into chapters at each H2; drop the leading H1.
+    var nodes = Array.prototype.slice.call(content.childNodes).filter(function (n) {
+      return !(n.nodeType === 3 && !n.textContent.trim());
+    });
+    var chapters = [], cur = null, preamble = [];
+    nodes.forEach(function (n) {
+      var isEl = n.nodeType === 1;
+      if (isEl && n.tagName === 'H1') return;            // title comes from metadata
+      if (isEl && n.tagName === 'H2') { cur = { title: n.textContent.trim(), nodes: [] }; chapters.push(cur); }
+      else if (cur) { cur.nodes.push(n); }
+      else { preamble.push(n); }
+    });
+
+    var frag = document.createDocumentFragment();
+    // cover (first page). The footer running element is nested INSIDE the cover
+    // so it does not force an empty default page ahead of the cover.
+    var cover = divider('cover', meta.kicker, meta.title, null);
+    cover.insertBefore(el('div', 'footerbrand', (meta.markSvg || '') + '<span><b>' + meta.brandName + '</b> ' + year + '</span>'), cover.firstChild);
+    frag.appendChild(cover);
+    // TOC
+    var toc = el('section', 'toc');
+    toc.appendChild(el('h2', null, 'Contents'));
+    chapters.forEach(function (ch, i) {
+      var num = ('0' + (i + 1)).slice(-2), id = 'chap-' + (i + 1);
+      var a = el('a', null, '<span class="num">' + num + '</span>' + ch.title);
+      a.setAttribute('href', '#' + id);
+      toc.appendChild(a);
+    });
+    frag.appendChild(toc);
+    // optional preamble (content before the first H2) on its own page
+    if (preamble.length) {
+      var pre = el('section', 'content-block');
+      preamble.forEach(function (n) { pre.appendChild(n); });
+      frag.appendChild(pre);
+    }
+    // chapters: divider -> intro -> body
+    chapters.forEach(function (ch, i) {
+      var num = ('0' + (i + 1)).slice(-2), id = 'chap-' + (i + 1);
+      frag.appendChild(divider('chcover', 'Chapter ' + num, ch.title, id));
+      // intro = the chapter's first paragraph (per the editorial rule)
+      var firstP = ch.nodes.find(function (n) { return n.nodeType === 1 && n.tagName === 'P'; });
+      var introText = firstP ? firstP.innerHTML : '';
+      var intro = el('section', 'chintro');
+      intro.appendChild(el('div', 'ci-kicker', 'Chapter ' + num));
+      intro.appendChild(el('h2', 'ci-title', ch.title));   // sets chaptertitle string
+      intro.appendChild(el('div', 'ci-rule'));
+      intro.appendChild(el('div', 'ci-intro', introText));
+      frag.appendChild(intro);
+      // body = remaining nodes (first paragraph already shown as the intro)
+      var body = el('section', 'chbody content-block');
+      ch.nodes.forEach(function (n) { if (n !== firstP) body.appendChild(n); });
+      frag.appendChild(body);
+    });
+
+    // Replace the .content wrapper entirely so the bleed cover is the first
+    // box on the page (a wrapping block would open an empty default page 1).
+    var host = content.parentNode;
+    content.innerHTML = '';
+    host.replaceChild(frag, content);
+  };
+  </script>
 </body>
 </html>

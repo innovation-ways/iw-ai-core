@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -130,19 +131,39 @@ def _resolve_d2_binary() -> Path | None:
 _D2_BINARY: Path | None = _resolve_d2_binary()
 
 
-def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
-    """Render HTML to PDF using headless Chromium.
+# Paged.js polyfill — vendored under dashboard/static/vendor/pagedjs. Drives the
+# CSS Paged Media layout (cover, TOC, per-chapter title pages, running header/
+# footer) that doc_pdf.html relies on. Kept here so render_pdf_chromium stays the
+# single, shared PDF entry point for every project.
+_PAGEDJS_PATH = (
+    Path(__file__).resolve().parents[1] / "static" / "vendor" / "pagedjs" / "paged.polyfill.js"
+)
+_PDF_WORKER = Path(__file__).resolve().parent / "pdf_worker.py"
 
-    WeasyPrint does not support SVG <foreignObject> (Mermaid node labels live there),
-    so we use the Playwright-managed Chromium binary with --print-to-pdf instead.
-    Returns None if the binary is missing or the subprocess fails.
+
+def render_pdf_chromium(html_content: str, timeout: int = 120) -> bytes | None:
+    """Render HTML to PDF via Paged.js in an isolated Playwright subprocess.
+
+    The HTML (from doc_pdf.html) sets ``window.PagedConfig = {auto:false}`` and
+    defines ``window.buildLayout`` + a ``before`` hook; the worker injects the
+    Paged.js polyfill and runs ``PagedPolyfill.preview()`` so CSS Paged Media
+    (named pages, running headers/footers via ``string()``/``element()``,
+    ``target-counter`` TOC, cover + per-chapter pages) is fully applied before
+    printing — with zero browser margins + ``prefer_css_page_size`` (the @page
+    boxes map 1:1) and NO Chromium default date/title header.
+
+    Each render runs in a fresh subprocess (``pdf_worker.py``): the sync
+    Playwright API is not safe to re-enter inside the long-lived server, so we
+    isolate it the way the previous ``--print-to-pdf`` subprocess did. Chromium
+    (not WeasyPrint) is required because Mermaid node labels use SVG
+    ``<foreignObject>``. Returns None on any failure (caller falls back to HTML).
     """
-    if _PLAYWRIGHT_CHROME is None or not _PLAYWRIGHT_CHROME.exists():
+    if not _PAGEDJS_PATH.exists():
         logger.warning(
-            "Chromium binary not found — PDF generation unavailable "
-            "(searched IW_PLAYWRIGHT_CHROME_PATH, ms-playwright cache, and PATH)"
+            "Paged.js polyfill missing at %s — PDF generation unavailable", _PAGEDJS_PATH
         )
         return None
+
     with tempfile.TemporaryDirectory() as tmpdir:
         html_path = Path(tmpdir) / "doc.html"
         pdf_path = Path(tmpdir) / "doc.pdf"
@@ -150,29 +171,27 @@ def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
         try:
             result = subprocess.run(  # noqa: S603
                 [
-                    str(_PLAYWRIGHT_CHROME),
-                    "--headless",
-                    "--disable-gpu",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    f"--print-to-pdf={pdf_path}",
-                    f"file://{html_path}",
+                    sys.executable,
+                    str(_PDF_WORKER),
+                    str(html_path),
+                    str(pdf_path),
+                    str(_PAGEDJS_PATH),
                 ],
                 timeout=timeout,
                 capture_output=True,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-            logger.warning("Chromium PDF generation aborted: %s", exc)
+            logger.warning("PDF worker aborted: %s", exc)
             return None
         if result.returncode != 0:
             logger.warning(
-                "Chromium PDF generation failed (rc=%d): %s",
+                "PDF worker failed (rc=%d): %s",
                 result.returncode,
-                result.stderr.decode(errors="replace"),
+                result.stderr.decode(errors="replace")[:500],
             )
             return None
         if not pdf_path.exists():
-            logger.warning("Chromium ran but no PDF was written to %s", pdf_path)
+            logger.warning("PDF worker ran but no PDF was written")
             return None
         return pdf_path.read_bytes()
 
