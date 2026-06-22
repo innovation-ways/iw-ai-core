@@ -5,7 +5,13 @@ render gets a fresh Playwright process — the sync Playwright API is not safe t
 re-enter repeatedly inside the long-lived FastAPI server, so we isolate it here.
 
 Usage:
-    python -m dashboard.utils.pdf_worker <html_path> <pdf_path> <pagedjs_path>
+    python -m dashboard.utils.pdf_worker <html_path> <pdf_path> <pagedjs_path> [<chrome_path>]
+
+The optional ``chrome_path`` is the Chromium/Chrome executable resolved by
+``dashboard.utils.markdown._resolve_chromium_binary``. When supplied it is passed
+as Playwright's ``executable_path`` so the worker reuses the same system Chromium
+the rest of the app relies on, instead of Playwright's separately-downloaded
+browser (which may be absent — we never run ``playwright install``).
 
 Exit codes: 0 ok · 2 bad args · 3 Paged.js layout error · 4 render failure.
 """
@@ -17,18 +23,25 @@ from pathlib import Path
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
-        sys.stderr.write("usage: pdf_worker <html_path> <pdf_path> <pagedjs_path>\n")
+    if len(argv) not in (3, 4):
+        sys.stderr.write(
+            "usage: pdf_worker <html_path> <pdf_path> <pagedjs_path> [<chrome_path>]\n"
+        )
         return 2
-    html_path, pdf_path, pagedjs_path = argv
+    html_path, pdf_path, pagedjs_path = argv[:3]
+    chrome_path = argv[3] if len(argv) == 4 else ""
 
     from playwright.sync_api import sync_playwright
 
+    launch_kwargs: dict[str, object] = {
+        "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"]
+    }
+    if chrome_path:
+        launch_kwargs["executable_path"] = chrome_path
+
     html = Path(html_path).read_text(encoding="utf-8")
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"]
-        )
+        browser = pw.chromium.launch(**launch_kwargs)  # type: ignore[arg-type]
         try:
             page = browser.new_page()
             page.set_content(html, wait_until="networkidle", timeout=60000)

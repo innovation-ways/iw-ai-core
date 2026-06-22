@@ -130,6 +130,7 @@ KNOWN_UNTESTED_COMMANDS: dict[str, dict[str, str]] = {
     "sync-agents": {"reason": _DEFERRED},
     "sync-templates": {"reason": _DEFERRED},
     "sync-assets": {"reason": _DEFERRED},
+    "sync-doc-system": {"reason": _DEFERRED},
     "init-project": {"reason": _DEFERRED},
     "db-identity": {"reason": _DEFERRED},
     "db-identity show": {"reason": _DEFERRED},

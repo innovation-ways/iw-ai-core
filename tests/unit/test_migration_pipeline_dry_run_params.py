@@ -31,7 +31,7 @@ def _dry_run_result(*, success: bool = True) -> object:
 class TestDryRunParameterisation:
     """run_pre_merge_dry_run honours db_image, script_location, and bootstrap_sql."""
 
-    def test_uses_provided_db_image(self) -> None:
+    def test_uses_provided_db_image(self) -> None:  # noqa: assertion-scanner
         """The testcontainer is started from the project's configured image."""
         with (
             patch("testcontainers.postgres.PostgresContainer") as mock_cls,

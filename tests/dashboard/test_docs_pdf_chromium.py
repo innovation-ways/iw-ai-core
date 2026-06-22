@@ -1,12 +1,16 @@
-"""I-00074 S03 — Tests for PDF export via Chromium (not WeasyPrint).
+"""I-00074 S03 — Tests for PDF export via Chromium + Paged.js (not WeasyPrint).
+
+Since the paged-layout redesign, ``render_pdf_chromium`` drives a fresh
+``pdf_worker.py`` subprocess (Playwright + Paged.js) rather than invoking Chromium
+directly with ``--print-to-pdf``. These tests assert against that worker contract.
 
 Tests verify:
 1. `render_pdf_chromium()` exists and is callable (reproduction test — fails before fix)
-2. Chromium binary missing → returns None (no exception)
-3. Chromium subprocess fails (non-zero rc) → returns None
-4. Chromium succeeds → returns PDF bytes
-5. Chromium subprocess timeout → returns None (not exception propagation)
-6. subprocess.run is called with --print-to-pdf flag (proves Chromium path taken)
+2. Paged.js polyfill missing → returns None (no exception)
+3. Worker subprocess fails (non-zero rc) → returns None
+4. Worker succeeds → returns PDF bytes
+5. Worker subprocess timeout → returns None (not exception propagation)
+6. subprocess.run launches the pdf_worker.py with html/pdf/pagedjs paths (proves worker path taken)
 7. `docs_pdf_view` route uses Chromium, not WeasyPrint
 8. `docs_pdf_view` returns 503 when Chromium unavailable
 9. `docs_pdf` download route uses Chromium, not WeasyPrint
@@ -20,6 +24,7 @@ Semantic correctness over shape checking (I003 lesson):
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -118,20 +123,27 @@ def test_i00074_render_pdf_chromium_exists():
     assert callable(render_pdf_chromium)
 
 
-def test_i00074_render_pdf_chromium_binary_missing(monkeypatch, tmp_path):
-    """When Chromium binary does not exist, returns None (not an exception)."""
-    monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", tmp_path / "nonexistent_chrome")
+def test_i00074_render_pdf_pagedjs_missing(monkeypatch, tmp_path):
+    """When the Paged.js polyfill is absent, returns None without launching a subprocess."""
+    monkeypatch.setattr(md_mod, "_PAGEDJS_PATH", tmp_path / "nonexistent_paged.js")
 
-    result = render_pdf_chromium("<html><body>test</body></html>")
+    called = False
+
+    def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
+        """Flag that the subprocess was (incorrectly) launched."""
+        nonlocal called
+        called = True
+        return MagicMock(returncode=0, stderr=b"")
+
+    with patch("dashboard.utils.markdown.subprocess.run", side_effect=fake_run):
+        result = render_pdf_chromium("<html><body>test</body></html>")
+
     assert result is None
+    assert called is False
 
 
-def test_i00074_render_pdf_chromium_subprocess_fails(monkeypatch, tmp_path):
-    """When Chromium exits with non-zero code, returns None."""
-    fake_chrome = tmp_path / "chrome"
-    fake_chrome.touch()
-    monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", fake_chrome)
-
+def test_i00074_render_pdf_chromium_subprocess_fails():
+    """When the PDF worker exits with non-zero code, returns None."""
     mock_result = MagicMock()
     mock_result.returncode = 1
     mock_result.stderr = b"error: something went wrong"
@@ -142,21 +154,28 @@ def test_i00074_render_pdf_chromium_subprocess_fails(monkeypatch, tmp_path):
     assert result is None
 
 
-def test_i00074_render_pdf_chromium_success(monkeypatch, tmp_path):
-    """When Chromium succeeds and writes output PDF, returns the PDF bytes."""
-    fake_chrome = tmp_path / "chrome"
-    fake_chrome.touch()
-    monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", fake_chrome)
+def _pdf_path_from_worker_cmd(cmd: list) -> Path:
+    """Return the output PDF path argument from a pdf_worker.py invocation.
 
+    Args:
+        cmd: The argv list passed to ``subprocess.run`` — ``[python, pdf_worker.py,
+            html_path, pdf_path, pagedjs_path, [chrome_path]]``.
+
+    Returns:
+        The ``pdf_path`` element (the sole ``.pdf`` argument).
+    """
+    pdf_args = [a for a in cmd if isinstance(a, str) and a.endswith(".pdf")]
+    assert len(pdf_args) == 1, f"expected exactly one .pdf arg, got {pdf_args}"
+    return Path(pdf_args[0])
+
+
+def test_i00074_render_pdf_chromium_success():
+    """When the worker succeeds and writes the output PDF, returns the PDF bytes."""
     fake_pdf_content = b"%PDF-1.4 fake-content"
 
     def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
-        """Return a MagicMock simulating a successful chromium subprocess run."""
-        # Find --print-to-pdf=<path> and write fake PDF there
-        for arg in cmd:
-            if isinstance(arg, str) and arg.startswith("--print-to-pdf="):
-                out_path = Path(arg.split("=", 1)[1])
-                out_path.write_bytes(fake_pdf_content)
+        """Simulate a successful pdf_worker run that writes to the pdf_path arg."""
+        _pdf_path_from_worker_cmd(cmd).write_bytes(fake_pdf_content)
         result = MagicMock()
         result.returncode = 0
         result.stderr = b""
@@ -168,20 +187,16 @@ def test_i00074_render_pdf_chromium_success(monkeypatch, tmp_path):
     assert result == fake_pdf_content
 
 
-def test_i00074_render_pdf_chromium_subprocess_timeout(monkeypatch, tmp_path):
-    """When Chromium hangs and subprocess.run raises TimeoutExpired, returns None.
+def test_i00074_render_pdf_chromium_subprocess_timeout():
+    """When the worker hangs and subprocess.run raises TimeoutExpired, returns None.
 
-    Without the try/except wrapper around subprocess.run, a Chromium hang would
+    Without the try/except wrapper around subprocess.run, a worker hang would
     propagate as an unhandled exception and the calling route would return 500
     instead of the intended 503.
     """
 
-    fake_chrome = tmp_path / "chrome"
-    fake_chrome.touch()
-    monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", fake_chrome)
-
     def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
-        """Return a MagicMock simulating a successful chromium subprocess run."""
+        """Simulate a hung worker subprocess."""
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 30))
 
     with patch("dashboard.utils.markdown.subprocess.run", side_effect=fake_run):
@@ -190,21 +205,14 @@ def test_i00074_render_pdf_chromium_subprocess_timeout(monkeypatch, tmp_path):
     assert result is None
 
 
-def test_i00074_render_pdf_chromium_uses_print_to_pdf_flag(monkeypatch, tmp_path):
-    """Chromium must be invoked with --print-to-pdf (not --output or stdout)."""
-    fake_chrome = tmp_path / "chrome"
-    fake_chrome.touch()
-    monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", fake_chrome)
-
+def test_i00074_render_pdf_chromium_launches_pdf_worker():
+    """render_pdf_chromium must launch pdf_worker.py with the html/pdf/pagedjs paths."""
     captured_calls: list[list] = []
 
     def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
-        """Return a MagicMock simulating a successful chromium subprocess run."""
+        """Capture the worker invocation and write a stub PDF to the pdf_path arg."""
         captured_calls.append(cmd)
-        for arg in cmd:
-            if isinstance(arg, str) and arg.startswith("--print-to-pdf="):
-                out_path = Path(arg.split("=", 1)[1])
-                out_path.write_bytes(b"%PDF fake")
+        _pdf_path_from_worker_cmd(cmd).write_bytes(b"%PDF fake")
         result = MagicMock()
         result.returncode = 0
         result.stderr = b""
@@ -215,11 +223,12 @@ def test_i00074_render_pdf_chromium_uses_print_to_pdf_flag(monkeypatch, tmp_path
 
     assert len(captured_calls) == 1
     cmd = captured_calls[0]
-    # Semantic: verify specific required flags
-    flags = " ".join(cmd)
-    assert "--print-to-pdf=" in flags, "Chromium must use --print-to-pdf flag"
-    assert "--headless" in flags, "Chromium must run headless"
-    assert "--no-sandbox" in flags, "Chromium must run with --no-sandbox for WSL/Linux"
+    # Semantic: the worker script and the three required path args are present.
+    assert cmd[0] == sys.executable, "worker must run under the same interpreter"
+    assert cmd[1].endswith("pdf_worker.py"), "must invoke the pdf_worker.py script"
+    assert str(md_mod._PAGEDJS_PATH) in cmd, "must pass the Paged.js polyfill path"
+    html_args = [a for a in cmd if isinstance(a, str) and a.endswith(".html")]
+    assert len(html_args) == 1, "must pass exactly one input HTML path"
 
 
 # ---------------------------------------------------------------------------

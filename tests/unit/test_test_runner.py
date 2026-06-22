@@ -5,7 +5,7 @@ Tests the following:
 - _resolve_execution_dir uses "test_config" when run_type == "test"
 - _resolve_allure_dirs uses "quality_config" when run_type == "quality"
 - _resolve_allure_dirs uses "test_config" when run_type == "test"
-- launch_test_run skips allure cleanup for quality runs
+- launch_test_run still cleans the run-scoped allure results dir for quality runs
 - launch_test_run skips allure report generation for quality runs
 - launch_test_run emits "quality_started" / "quality_completed" / "quality_failed" for quality runs
 - launch_test_run emits "test_started" / "test_completed" / "test_failed" for test runs
@@ -380,7 +380,7 @@ class TestLaunchTestRunEventTypes:
 
 
 class TestLaunchTestRunAllureSkip:
-    """Verify that allure cleanup and report generation are skipped for quality runs."""
+    """Verify allure report generation is skipped for quality runs, but results still cleaned."""
 
     def _run_launch_track_allure(
         self,
@@ -456,10 +456,10 @@ class TestLaunchTestRunAllureSkip:
         _, generate_called = self._run_launch_track_allure(run_type="test", tmp_path=tmp_path)
         assert generate_called is True
 
-    def test_quality_run_skips_allure_cleanup(self, tmp_path: Path) -> None:
-        """Verifies that quality run skips allure cleanup."""
+    def test_quality_run_cleans_allure_results(self, tmp_path: Path) -> None:
+        """Verifies that a quality run still removes its run-scoped allure results dir."""
         rmtree_called, _ = self._run_launch_track_allure(run_type="quality", tmp_path=tmp_path)
-        assert rmtree_called is False
+        assert rmtree_called is True
 
     def test_quality_run_skips_allure_report_generation(self, tmp_path: Path) -> None:
         """Verifies that quality run skips allure report generation."""

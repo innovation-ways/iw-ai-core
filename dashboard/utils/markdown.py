@@ -168,15 +168,20 @@ def render_pdf_chromium(html_content: str, timeout: int = 120) -> bytes | None:
         html_path = Path(tmpdir) / "doc.html"
         pdf_path = Path(tmpdir) / "doc.pdf"
         html_path.write_text(html_content, encoding="utf-8")
+        worker_cmd = [
+            sys.executable,
+            str(_PDF_WORKER),
+            str(html_path),
+            str(pdf_path),
+            str(_PAGEDJS_PATH),
+        ]
+        # Reuse the resolved system Chromium so the worker does not depend on a
+        # separate ``playwright install`` browser download (often absent here).
+        if _PLAYWRIGHT_CHROME is not None and _PLAYWRIGHT_CHROME.exists():
+            worker_cmd.append(str(_PLAYWRIGHT_CHROME))
         try:
             result = subprocess.run(  # noqa: S603
-                [
-                    sys.executable,
-                    str(_PDF_WORKER),
-                    str(html_path),
-                    str(pdf_path),
-                    str(_PAGEDJS_PATH),
-                ],
+                worker_cmd,
                 timeout=timeout,
                 capture_output=True,
             )

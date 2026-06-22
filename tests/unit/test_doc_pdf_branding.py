@@ -60,10 +60,15 @@ def test_pdf_embeds_inter_font() -> None:
 
 
 def test_pdf_includes_logo_lockup() -> None:
-    """Verifies the IW logo lockup (inline mark + wordmark) is in the header."""
+    """Verifies the IW logo lockup (inline mark + wordmark) feeds the paged layout."""
     html = _render_pdf_html()
-    assert html.find("iw-lockup") != -1
-    assert html.find("<svg") != -1
+    # The cover/divider lockup is assembled client-side by the paged-layout
+    # builder from the .fb-lockup box plus the brand mark + name carried in the
+    # #docmeta JSON. tojson escapes the inline SVG markup, so it appears as the
+    # <svg escape rather than a literal <svg tag.
+    assert html.find("fb-lockup") != -1
+    assert html.find("markWhiteSvg") != -1
+    assert html.find("\\u003csvg") != -1
     assert html.find("Innovation Ways") != -1
 
 

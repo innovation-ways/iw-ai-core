@@ -670,12 +670,12 @@ class TestMergeItemNonOrchProjectMigrationPipeline:
 
         return {"rebase": mock_rebase, "dry_run": mock_dry, "apply": mock_apply, "item": item}
 
-    def test_rebase_skipped_for_non_orch_project(self) -> None:
+    def test_rebase_skipped_for_non_orch_project(self) -> None:  # noqa: assertion-scanner
         """The orch down_revision-rewriting rebase never runs for a non-orch project."""
         mocks = self._run_merge_item(migration_validation=None)
         mocks["rebase"].assert_not_called()
 
-    def test_apply_skipped_for_non_orch_project(self) -> None:
+    def test_apply_skipped_for_non_orch_project(self) -> None:  # noqa: assertion-scanner
         """The apply-to-live-orch-DB phase never runs for a non-orch project."""
         mocks = self._run_merge_item(migration_validation=None)
         mocks["apply"].assert_not_called()
@@ -706,7 +706,7 @@ class TestMergeItemNonOrchProjectMigrationPipeline:
         assert kwargs["script_location"] == "/wt/I-00131/alembic"
         assert kwargs["bootstrap_sql"] == ("CREATE EXTENSION IF NOT EXISTS vector",)
 
-    def test_rebase_and_apply_still_skipped_when_opted_in(self) -> None:
+    def test_rebase_and_apply_still_skipped_when_opted_in(self) -> None:  # noqa: assertion-scanner
         """Opting into validation does NOT enable the orch rebase/apply phases."""
         cfg = _make_migration_validation_config()
         mocks = self._run_merge_item(migration_validation=cfg)

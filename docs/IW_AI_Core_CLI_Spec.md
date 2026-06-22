@@ -967,6 +967,7 @@ iw
 ├── sync-agents         Sync platform agents and commands to a project
 ├── sync-templates      Sync design templates to all registered projects
 ├── sync-assets         Sync Innovation Ways brand assets to all registered projects
+├── sync-doc-system     Sync shared doc-system config (brand, editorial) to all registered projects
 ├── init-project        Initialize a new project for IW AI Core management
 ├── db-identity         Show or verify the orchestration DB instance identity fingerprint
 │   ├── show            Show live DB instance UUID, expected UUID, and mode

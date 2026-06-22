@@ -68,6 +68,11 @@ def launch_test_run(run_id: int) -> None:
     pending -> running -> passed/failed/error.
     """
     db = SessionLocal()
+    # Tracks the run-scoped allure results dir so the finally block can always
+    # remove it — including on the timeout/cancel/error early-return paths that
+    # never reach the normal report-then-delete step. Leaving it unset leaks a
+    # large directory (thousands of JSON files) per abnormal exit.
+    allure_results: str | None = None
     try:
         run = db.scalar(select(TestRun).where(TestRun.id == run_id))
         if run is None:
@@ -192,13 +197,13 @@ def launch_test_run(run_id: int) -> None:
         run.pid = None  # Process is done
 
         # Generate allure report if results directory exists (skipped for quality runs).
-        # After generating the HTML report the raw results dir is deleted — it can be large
-        # (thousands of JSON files) and everything needed is in the HTML report.
+        # The raw results dir is removed in the finally block once everything that
+        # needs it (report generation) is done — it can be large (thousands of JSON
+        # files) and everything needed is in the HTML report.
         if run.run_type != "quality" and allure_results and Path(allure_results).is_dir():
             report_ok = _generate_allure_report(allure_results, allure_report, execution_dir)
             if report_ok:
                 run.allure_report_dir = allure_report
-            shutil.rmtree(allure_results, ignore_errors=True)
             summary = parse_allure_summary(allure_report) if report_ok else None
             if summary:
                 run.summary = summary
@@ -240,6 +245,12 @@ def launch_test_run(run_id: int) -> None:
         except Exception:
             logger.exception("Failed to mark TestRun %d as error", run_id)
     finally:
+        # Always remove the run-scoped allure results dir, including on the
+        # timeout/cancel/error paths that return before the report step and for
+        # quality runs (which skip report generation). Allure's append semantics
+        # mean an un-cleaned dir grows without bound across runs.
+        if allure_results:
+            shutil.rmtree(allure_results, ignore_errors=True)
         db.close()
 
 
@@ -564,6 +575,11 @@ def mark_orphaned_runs() -> int:
             run.status = TestRunStatus.error
             run.finished_at = datetime.now(UTC)
             run.pid = None
+            # The launch_test_run finally block never ran for a process-killed
+            # orphan (e.g. dashboard hot-reload), so its run-scoped allure results
+            # dir leaks. Remove it here using the path recorded at launch time.
+            if run.allure_results_dir:
+                shutil.rmtree(run.allure_results_dir, ignore_errors=True)
             orphaned += 1
         if orphaned:
             db.commit()

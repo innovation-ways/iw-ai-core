@@ -42,7 +42,7 @@ def _ensure_iw_core_project(db_session_factory: sessionmaker) -> None:
 
 
 _HEAD_REVISION = (
-    "65084ea7e4b4"  # MUST update this constant whenever a new migration is added to main —
+    "e2272b410220"  # MUST update this constant whenever a new migration is added to main —
 )
 # see CLAUDE.md migration section (CR-00095)
 _PREV_REVISION = "76250ecb2593"
