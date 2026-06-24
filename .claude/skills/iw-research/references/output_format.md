@@ -120,6 +120,7 @@ Every research document MUST contain:
 - [ ] **Limitations section** (be honest — don't pretend coverage is complete)
 - [ ] **Sources table** with #, title, credibility, URL for every source used
 - [ ] **Confidence markers** in ALL finding section headers
+- [ ] **Visualizations** for every finding with a shape (see "Visualizations" below) — each with a declarative title, a framing blockquote before, interpretation after, and source/units
 
 ---
 
@@ -165,6 +166,86 @@ Be honest. Research has boundaries. Common limitations to include:
 - Scope: "This research covers X but does not address Y"
 - Source quality: "Primary data unavailable; relied on secondary sources"
 - Depth: "Not a comprehensive audit; further investigation recommended"
+
+---
+
+## Visualizations
+
+A research document must not be text-only. Diagrams render natively in the IW AI
+Core dashboard and PDF: fenced ` ```mermaid ` and ` ```d2 ` blocks are converted to
+SVG with the Innovation Ways brand theme applied automatically — write the DSL, the
+pipeline handles rendering and styling. Guidance below is editorial (R-00153);
+for the diagram-tool landscape and aesthetics see R-00051.
+
+### When to add a figure (vs. a table or text)
+
+| The finding is about… | Use |
+|-----------------------|-----|
+| A single number, or a one/two-item comparison | **Bold inline text** |
+| A handful of exact values in **one** unit | **Markdown table** |
+| A trend, flow, hierarchy, relationship, distribution, or positioning | **A figure** |
+| Exact values **and** their shape both matter | **Table + figure** |
+
+Restraint matters: each figure must earn its place. Budget roughly **one orienting
+figure** (concept map / problem structure) plus **one figure per shaped finding** —
+never a figure per section by rote. No chartjunk, no 3D, no dual-axis.
+
+### Choosing the chart by data relationship (FT Visual Vocabulary)
+
+| Relationship | Go-to figure | Cautions |
+|--------------|--------------|----------|
+| Comparison / magnitude | Bar / column | ≤ ~15 categories; else rank + filter |
+| Change over time / trend | Line / area | ordered (time) x-axis only |
+| Part-to-whole | Stacked bar / treemap | pie only for 2-3 slices |
+| Relationship / correlation | Scatter / bubble | add trend line for clarity |
+| Distribution | Histogram / boxplot | 10-20 bins to start |
+| Ranking | Ordered bar / lollipop | sort by value, not label |
+| Flow / process | Flowchart / Sankey | label edges with volume/condition |
+| Positioning of options | 2×2 quadrant matrix | shortlisting device, not a verdict |
+
+### Figure craft (every figure)
+
+1. **Declarative title = the takeaway.** "Async cuts p99 latency 5×", not "Latency by mode".
+2. **Frame before, interpret after.** A one-line `>` blockquote stating *why this figure*
+   precedes it; the prose after says what to take from it. Never drop a mute diagram.
+3. **Caption carries units and source.** State the unit ("ops/sec") and cite external data.
+4. **Accessibility.** Never encode by color alone — add labels, shapes, or line styles;
+   ensure readable contrast; give every figure a one-sentence takeaway that doubles as alt text.
+
+### Syntax examples
+
+Structural diagram (Mermaid — renders client-side and in PDF):
+
+````markdown
+> **Why:** the request path crosses three services, which prose enumerates poorly.
+
+```mermaid
+flowchart LR
+    A[Client] --> B[API] --> C[(DB)]
+```
+
+*Figure 1. Request path: the API mediates every client-to-database call (source: this analysis).*
+````
+
+Quantitative chart (Mermaid `xychart-beta` for bar/line; use a table for other types):
+
+````markdown
+```mermaid
+xychart-beta
+    title "Throughput by framework (req/sec, higher is better)"
+    x-axis [FastAPI, Flask]
+    y-axis "req/sec" 0 --> 25000
+    bar [23000, 4200]
+```
+````
+
+D2 (always server-rendered — no client runtime, so it works in every view):
+
+````markdown
+```d2
+client -> api -> db
+```
+````
 
 ---
 

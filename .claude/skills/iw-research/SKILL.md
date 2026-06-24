@@ -167,6 +167,41 @@ Where `slug` is a 3-5 word kebab-case descriptor of the topic.
 - Limitations section
 - Sources table with #, title, credibility, URL
 
+### Visualizations (apply per finding while writing)
+
+A research document is not text-only. Where a finding has a **shape** — a flow,
+hierarchy, relationship, trend, distribution, or positioning — embed a figure;
+where it is a single number or a few exact values, use **bold text or a table**
+instead. Diagrams render natively in the dashboard and PDF (fenced ` ```mermaid `
+and ` ```d2 ` blocks → SVG; brand theme applied automatically).
+
+Run this decision for each finding:
+
+1. **Visualize the shape, tabulate/narrate the values.** One number → bold inline.
+   A handful of exact values in one unit → markdown table. A trend, flow,
+   hierarchy, relationship, distribution, or positioning → a figure.
+2. **Pick the chart by the data relationship** (FT Visual Vocabulary): comparison →
+   bar (≤15 categories); change over time → line/area (ordered x-axis only);
+   part-to-whole → stacked bar/treemap (pie only for 2-3 slices); relationship →
+   scatter/bubble; distribution → histogram/boxplot; flow/process → flowchart or
+   Sankey; positioning of options → 2×2 quadrant matrix.
+3. **Make each figure self-contained**: a **declarative title that states the
+   takeaway** (not "X vs Y"), a one-line "why this figure" framing blockquote
+   *before* it, and the interpretation in prose *after* it. Caption carries units
+   and the data **source**.
+4. **Accessibility & restraint**: never encode by color alone (use labels/shapes/
+   line styles too); keep figures decluttered (no chartjunk, no 3D/dual-axis);
+   budget roughly one orienting figure plus one per shaped finding — not a figure
+   per section by rote.
+
+For quantitative data (benchmarks, market sizes, shares), prefer a chart over a
+prose dump: Mermaid `xychart-beta` covers bar/line; otherwise present the numbers
+as a table. See `references/output_format.md` → "Visualizations" for the full
+chart-selection table, syntax examples, and the accessibility checklist, and
+[R-00051](../../docs/research/R-00051-beautiful-diagram-tools.md) /
+[R-00153](../../docs/research/R-00153-research-visualization-best-practices.md)
+for the underlying tool and editorial guidance.
+
 ---
 
 ## Step 6: Register in Platform
@@ -235,6 +270,10 @@ Present a summary to the user:
 - **MUST** include confidence markers `[HIGH/MEDIUM/LOW]` on every finding
 - **MUST** cite every factual claim with an inline source URL
 - **MUST** call `iw register` and `iw doc-update` at the end
+- **MUST** consider a visualization for every finding that has a shape (flow,
+  hierarchy, relationship, trend, distribution, positioning) — embed a brand-themed
+  ` ```mermaid `/` ```d2 ` figure with a declarative title, framing, and source;
+  use a table or bold text for exact values. See Step 5 → "Visualizations".
 - **NEVER** implement code — this is a documentation/research skill
 - **NEVER** make web calls before GO checkpoint
 - **NEVER** skip the Sources table — it is required for all modes

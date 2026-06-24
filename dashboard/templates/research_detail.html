@@ -47,8 +47,18 @@
     <h1 class="text-2xl font-bold text-foreground leading-tight">{{ doc.title }}</h1>
   </div>
 
-  {# Right: back link #}
+  {# Right: download + back link #}
   <div class="flex items-center gap-2 flex-shrink-0">
+    {% if doc.content %}
+    <a href="/project/{{ current_project.id }}/research/{{ doc.doc_id }}/pdf"
+       target="_blank"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:opacity-90 transition-opacity">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      Download PDF
+    </a>
+    {% endif %}
     <a href="/project/{{ current_project.id }}/research"
        class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -101,6 +111,14 @@
       </svg>
       HTML
     </button>
+    <button role="tab" aria-selected="false" aria-controls="view-pdf"
+            id="tab-pdf" onclick="switchDocTab('pdf')"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+      </svg>
+      PDF
+    </button>
   </div>
 
   {# Viewer panels #}
@@ -143,6 +161,16 @@
               title="{{ doc.title }} — HTML view"></iframe>
     </div>
 
+    {# PDF panel — lazy iframe #}
+    <div id="view-pdf" class="hidden">
+      <iframe id="pdf-frame"
+              src="about:blank"
+              data-src="/project/{{ current_project.id }}/research/{{ doc.doc_id }}/pdf-view"
+              class="w-full border-0 block"
+              style="height: calc(100vh - 220px);"
+              title="{{ doc.title }} — PDF view"></iframe>
+    </div>
+
   </div>
 
   {% else %}
@@ -162,7 +190,7 @@
 
 <script>
 function switchDocTab(mode) {
-  ['markdown','html'].forEach(function(v) {
+  ['markdown','html','pdf'].forEach(function(v) {
     var panel = document.getElementById('view-' + v);
     var tab   = document.getElementById('tab-' + v);
     if (!panel || !tab) return;
