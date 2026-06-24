@@ -23,104 +23,120 @@ mkdir -p docs/research/
 
 ## Document Template
 
-```markdown
-# {Title}
+Style: **hybrid analyst-led, rigor-backed** — lead with the answer, prove it
+transparently, calibrate every claim. Grounding research:
+[R-00158](../../docs/research/R-00158-research-report-writing-best-practices.md).
 
-**Research ID**: {ID}
-**Date**: {YYYY-MM-DD}
-**Mode**: {tech|market|deep|general}
-**Depth**: {quick|standard|deep}
-**Primary Question**: {main research question}
+```markdown
+# {Declarative Title — state the takeaway, not just the topic}
+
+| Field | Value |
+|-------|-------|
+| **ID** | {ID} |
+| **Date** | {YYYY-MM-DD} |
+| **Mode** | {tech\|market\|deep\|general} |
+| **Depth** | {quick\|standard\|deep} |
+| **Status** | draft |
 
 ---
 
 ## Executive Summary
 
-{3-5 sentences covering: the topic, key findings, and primary recommendation.
-This section should stand alone as a summary for busy readers.}
+{BLUF — lead with the answer. 4-6 sentences a busy reader can act on WITHOUT reading
+the body: the governing thought (primary answer), the 2-3 most important findings
+(confidence-tagged), and the top recommendation. Write this LAST. ~5-10% of length.}
 
-## Background
+## Introduction
 
-{2-3 sentences on why this research was conducted and what prompted it.
-Include any relevant context about the project or decision driving this research.}
+### Why this research
+{The motivation/trigger — what prompted it, why it matters now. Do NOT state findings
+or conclusions here ("found", "shows" are forbidden — this is framing).}
+
+### Objectives
+{The specific questions this research answers / what we expect to learn.}
+
+### Scope
+{What is in and out of scope. Boundaries are deliberate design choices (distinct from
+Limitations, which are constraints outside your control).}
+
+## Background & Context
+
+{Domain context, key concepts/definitions, and prior/related work the reader needs to
+understand the findings. Embed into the Introduction if only 2-3 sentences are needed.}
+
+## Methodology
+{Brief: primary vs secondary sources, how the research was done, and the confidence
+scale: HIGH = multiple authoritative corroborating sources; MEDIUM = credible but
+limited corroboration; LOW = single-source or inference. Optional for quick mode.}
 
 ## Findings
 
-### {Finding Title} [HIGH confidence]
+### F1 — {Declarative heading stating the finding} [HIGH]
 
-{Finding text with inline citations: [source text](url)}
+> **Why:** {one-line framing if a figure follows — what it shows and why}
 
-{Further explanation or evidence supporting this finding.}
+{Claim FIRST, then evidence. Inline citations: [source text](url). A finding is
+*what was observed*. Add a visualization when the finding has a shape (see below).}
 
-### {Finding Title} [MEDIUM confidence]
+### F2 — {Declarative heading} [MEDIUM]
 
-{Finding text with inline citations: [source text](url)}
+{Claim, evidence, inline citations. Note dissenting views / incomplete data.}
 
-{Further explanation or caveats. Note any dissenting views or incomplete data.}
+### F3 — {Declarative heading} [LOW]
 
-### {Finding Title} [LOW confidence]
+{Be explicit about uncertainty: "based on [a single source](url); needs validation".}
 
-{Finding text — when confidence is low, be explicit about uncertainty:
-"This finding is based on [single source](url) and requires additional validation."}
+## Analysis / Discussion
 
----
+{Synthesize ACROSS findings — what they mean together, tensions between them,
+comparison with prior work. May merge into Findings for short research.}
+
+## Conclusion
+
+{MANDATORY. First sentence restates the primary question as a DECLARATIVE ANSWER
+("The evidence indicates that X…"). Synthesize — do not restate the findings list.
+State the implications ("so what"). Introduce NO new evidence. No apologetic hedging.}
 
 ## Recommendations
 
-1. **Primary**: {main recommendation with rationale. Reference specific findings that support this.}
-
-2. **Alternative**: {alternative approach if primary recommendation is not viable.
-Include the scenario where this alternative is preferred.}
-
-3. **Avoid**: {what NOT to do and the specific evidence that shows why this path is problematic.}
-
----
+1. **{Action}** — {To help with X, do Y, because Z. Trace to a finding/conclusion.} *(Supports F#)*
+2. **{Action}** — {prioritized, specific, feasible.}
+3. **{Action / what to avoid}** — {with the evidence that justifies it.}
 
 ## Limitations
 
-- {What this research does not cover}
-- {Known gaps in the research — be honest}
-- {Time constraints or source availability issues, if any}
-- {Questions that remain unanswered}
-
----
+- {Constraints OUTSIDE your control that qualify the findings — state confidently.}
+- {Known gaps; what the evidence cannot support; what remains uncertain.}
 
 ## Sources
 
-| # | Source | Credibility | URL |
-|---|--------|-------------|-----|
-| 1 | {title} | HIGH | {url} |
-| 2 | {title} | MEDIUM | {url} |
-| 3 | {title} | LOW | {url} |
-
----
-
-## Appendix: Research Log
-
-**Date range**: {start} to {end}
-**Queries run**: {N} WebSearch, {N} WebFetch, {N} context7
-**Mode used**: {mode}
-**Depth level**: {depth}
-
-{Optional: brief notes on research process, challenges encountered, or notable deviations from standard process.}
+| # | Title | Credibility | URL |
+|---|-------|-------------|-----|
+| 1 | {title} | High | {url} |
+| 2 | {title} | Medium | {url} |
+| 3 | {title} | Low | {url} |
 ```
 
 ---
 
 ## Mandatory Elements Checklist
 
-Every research document MUST contain:
+Every research document MUST contain (scale to depth — see Step 5):
 
-- [ ] **Frontmatter line** with Research ID, Date, Mode, Depth, Primary Question
-- [ ] **Executive Summary** (3-5 sentences; must stand alone)
-- [ ] **Background** (2-3 sentences on why research was conducted)
-- [ ] **Findings sections** with `[HIGH/MEDIUM/LOW]` in each heading
+- [ ] **Title + metadata** (declarative title; ID, Date, Mode, Depth, Status)
+- [ ] **Executive Summary** — BLUF, standalone, written last (~5-10%)
+- [ ] **Introduction** with explicit **Why this research**, **Objectives**, **Scope**
+- [ ] **Background & Context** (domain context + prior work; embed in Intro if short)
+- [ ] **Methodology** declaring the confidence scale (optional for quick mode)
+- [ ] **Findings** — declarative headings, claim-first, `[HIGH/MEDIUM/LOW]` on each
 - [ ] **Inline citations** on every factual claim: `[text](url)`
-- [ ] **Recommendations section** with Primary, Alternative, Avoid
-- [ ] **Limitations section** (be honest — don't pretend coverage is complete)
+- [ ] **Analysis / Discussion** (may merge into Findings for short research)
+- [ ] **Conclusion** — MANDATORY; answers the primary question, synthesizes, no new evidence
+- [ ] **Recommendations** — each traceable to a finding/conclusion, prioritized
+- [ ] **Limitations** (constraints outside your control — distinct from Scope)
 - [ ] **Sources table** with #, title, credibility, URL for every source used
-- [ ] **Confidence markers** in ALL finding section headers
-- [ ] **Visualizations** for every finding with a shape (see "Visualizations" below) — each with a declarative title, a framing blockquote before, interpretation after, and source/units
+- [ ] **The firewall**: Findings vs Conclusions vs Recommendations kept distinct
+- [ ] **Visualizations** for every finding with a shape — declarative title, framing blockquote before, interpretation after, source/units
 
 ---
 
@@ -149,16 +165,31 @@ broader community sentiment is unclear and requires additional research.
 ```
 
 ### Executive Summary
-Write this **last** — after all findings are complete. It should:
-- State the topic clearly in the first sentence
-- Present the key finding or recommendation
-- End with a clear takeaway or actionable next step
-- Be 3-5 sentences (never exceed 100 words)
+Write this **last** — after all findings are complete. BLUF: lead with the answer.
+- First sentence states the governing thought (the primary answer), not the topic
+- Then the 2-3 most important findings (confidence-tagged) and the top recommendation
+- Must stand alone — a reader can act on it without reading the body
+- ~5-10% of total length
+
+### Introduction
+The framing gateway — sets up the research, never reports results.
+- **Why this research**: the motivation/trigger, why it matters now
+- **Objectives**: the specific questions / what we expect to learn
+- **Scope**: what is in and out (deliberate boundaries)
+- NEVER use conclusion-register words here ("found", "shows", "demonstrates")
+
+### Conclusion (MANDATORY — the most common gap)
+- First sentence restates the primary question as a **declarative answer**
+- **Synthesize**, don't restate — say what the findings mean *together* ("so what")
+- Connect back to the Objectives; state implications for the reader's decision
+- Introduce **no new evidence or sources**; no "In conclusion…"; no apologetic hedging
+- A conclusion that merely lists the findings again has failed
 
 ### Recommendations
-- **Primary**: The recommended action with specific rationale tied to findings
-- **Alternative**: What to do if Primary isn't viable (cost, timeline, technical constraints)
-- **Avoid**: Specific things NOT to do, with evidence explaining why
+- Each follows: *"To help with X, we recommend Y, because Z"* — traceable to a finding
+- **Prioritized** (by impact/urgency, not discovery order) and specific enough to act on
+- Distinguish insight (belongs in the Conclusion) from action (belongs here)
+- May include "what to avoid" and future-research recommendations
 
 ### Limitations
 Be honest. Research has boundaries. Common limitations to include:

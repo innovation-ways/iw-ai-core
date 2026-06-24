@@ -144,7 +144,9 @@ def research_detail(
     # (research_detail.html shim), but D2 blocks are always server-rendered to SVG
     # because D2 has no browser renderer; callouts are styled here too.
     content_html = (
-        render_markdown_with_callouts(doc.content, render_mermaid=False) if doc.content else ""
+        render_markdown_with_callouts(doc.content, render_mermaid=False, project_id=project_id)
+        if doc.content
+        else ""
     )
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -184,7 +186,7 @@ def research_html_view(
 
     # Standalone iframe served without the Mermaid client runtime, so render all
     # diagrams (Mermaid + D2) server-side to inline SVG.
-    rendered = render_markdown_with_callouts(doc.content)
+    rendered = render_markdown_with_callouts(doc.content, project_id=project_id)
     fallback_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -262,7 +264,7 @@ def _render_research_pdf_cached(
     html_content = pdf_template.render(
         doc=doc,
         project=project,
-        rendered_content=render_markdown_with_callouts(doc.content or ""),
+        rendered_content=render_markdown_with_callouts(doc.content or "", project_id=project.id),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
