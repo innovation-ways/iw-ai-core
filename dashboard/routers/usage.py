@@ -77,6 +77,8 @@ def llm_usage_embed(request: Request, provider: str = "claude") -> Any:
     if provider == "minimax":
         minimax = usage["minimax"]
         windows = [{"label": minimax.get("block_reset") or "5h", "pct": minimax["block_pct"]}]
+        if minimax.get("week_pct") is not None:
+            windows.append({"label": minimax.get("week_reset") or "7d", "pct": minimax["week_pct"]})
     elif provider == "codex":
         codex = usage.get("codex") or {"block_pct": 0, "week_pct": 0, "status": "error"}
         status = codex.get("status") or "ok"

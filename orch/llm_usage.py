@@ -214,7 +214,16 @@ def _format_reset(remains_ms: int) -> str | None:
 
 
 def _minimax_usage_remote(api_key: str) -> dict[str, Any]:
-    """Call GET /coding_plan/remains and return usage dict for the MiniMax-M* row."""
+    """Call GET /coding_plan/remains and return the active text-plan usage.
+
+    The API returns one row per plan bucket. Accounts expose either
+    model-specific rows (``MiniMax-M*``) carrying explicit request counts, or
+    generic ``general``/``video`` buckets that report a remaining-percentage
+    instead of counts. We prefer a ``MiniMax-M*`` row, fall back to
+    ``general``, and derive usage from counts when available, otherwise from
+    the ``*_remaining_percent`` fields. The weekly window is included when the
+    plan exposes it.
+    """
     url = "https://api.minimax.io/v1/api/openplatform/coding_plan/remains"
     group_id = os.environ.get("IW_MINIMAX_GROUP_ID")
     if group_id:
@@ -228,30 +237,47 @@ def _minimax_usage_remote(api_key: str) -> dict[str, Any]:
     resp.raise_for_status()
 
     data = resp.json()
-    if data["base_resp"]["status_code"] != 0:
-        raise RuntimeError(data["base_resp"]["status_msg"])
+    base = data.get("base_resp") or {}
+    if base.get("status_code", 0) != 0:
+        raise RuntimeError(base.get("status_msg", "MiniMax API error"))
 
     model_remains: list[dict[str, Any]] = data["model_remains"]
     row = next((r for r in model_remains if r["model_name"].startswith("MiniMax-M")), None)
     if row is None:
-        raise LookupError("MiniMax-M* row not present")
+        row = next((r for r in model_remains if r["model_name"] == "general"), None)
+    if row is None:
+        raise LookupError("no usable MiniMax plan row (MiniMax-M* or general)")
 
-    total = row["current_interval_total_count"]
-    if total == 0:
-        raise ValueError("MiniMax-M* total quota is 0")
+    result: dict[str, Any] = {}
 
-    # usage_count is remaining, not used (confirmed with MiniMax API team)
-    remaining = row["current_interval_usage_count"]
-    used = total - remaining
-    pct = min(100, round(used / total * 100))
-    reset = _format_reset(row["remains_time"])
+    # 5h interval: prefer explicit counts (usage_count is *remaining*), else the
+    # remaining-percent the plan reports directly.
+    total = row.get("current_interval_total_count") or 0
+    if total > 0:
+        remaining = row.get("current_interval_usage_count", 0)
+        used = total - remaining
+        result["block_pct"] = min(100, round(used / total * 100))
+        result["used"] = used
+        result["total"] = total
+    else:
+        rem_pct = row.get("current_interval_remaining_percent")
+        result["block_pct"] = max(0, min(100, 100 - int(rem_pct))) if rem_pct is not None else 0
+    result["block_reset"] = _format_reset(row.get("remains_time") or 0)
 
-    return {
-        "block_pct": pct,
-        "block_reset": reset,
-        "used": used,
-        "total": total,
-    }
+    # Weekly window (when the plan exposes it).
+    week_rem_pct = row.get("current_weekly_remaining_percent")
+    if week_rem_pct is not None:
+        result["week_pct"] = max(0, min(100, 100 - int(week_rem_pct)))
+        weekly_end = row.get("weekly_end_time")
+        # Match Claude/Codex weekly style ("Tue 09:00") via the wall-clock end
+        # time; fall back to a remaining-duration if it's absent.
+        result["week_reset"] = (
+            _format_resets_at(weekly_end / 1000)
+            if weekly_end
+            else _format_reset(row.get("weekly_remains_time") or 0)
+        )
+
+    return result
 
 
 def _minimax_usage() -> dict[str, Any]:
