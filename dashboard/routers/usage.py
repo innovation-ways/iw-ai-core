@@ -36,6 +36,72 @@ def _bar_color(pct: int) -> str:
     return "bg-primary"
 
 
+def _bar_hex(pct: int) -> str:
+    """Return a hex bar color mirroring _bar_color's thresholds (for embeds).
+
+    Args:
+        pct: Usage percentage (0–100).
+
+    Returns:
+        Hex color — red at >=90%, amber at >=70%, blue otherwise.
+    """
+    if pct >= 90:
+        return "#ef4444"
+    if pct >= 70:
+        return "#f59e0b"
+    return "#3b82f6"
+
+
+@router.get("/llm/embed", response_class=HTMLResponse)
+def llm_usage_embed(request: Request, provider: str = "claude") -> Any:
+    """Return a self-contained HTML bar view for one provider, for embedding.
+
+    Designed to be loaded in an ``<iframe>`` by external dashboards (e.g. a
+    gethomepage.dev iframe widget) so they render the same bar + reset-time
+    visualization as the in-app footer. Transparent background, inline CSS,
+    no external dependencies.
+
+    Args:
+        request: The current FastAPI request.
+        provider: One of ``"claude"``, ``"codex"``, ``"minimax"``.
+
+    Returns:
+        Standalone HTML page rendering that provider's usage-window bars.
+    """
+    usage = get_llm_usage()
+    windows: list[dict[str, Any]] = []
+    warning: str | None = None
+
+    if provider == "minimax":
+        minimax = usage["minimax"]
+        windows = [{"label": minimax.get("block_reset") or "5h", "pct": minimax["block_pct"]}]
+    elif provider == "codex":
+        codex = usage.get("codex") or {"block_pct": 0, "week_pct": 0, "status": "error"}
+        status = codex.get("status") or "ok"
+        if status != "ok":
+            warning = _CODEX_WARNING_MAP.get(status, "usage unavailable")
+        else:
+            windows = [
+                {"label": codex.get("block_reset") or "5h", "pct": codex["block_pct"]},
+                {"label": codex.get("week_reset") or "7d", "pct": codex["week_pct"]},
+            ]
+    else:  # claude (default)
+        claude = usage["claude"]
+        windows = [
+            {"label": claude.get("block_reset") or "5h", "pct": claude["block_pct"]},
+            {"label": claude.get("week_reset") or "7d", "pct": claude["week_pct"]},
+        ]
+
+    for window in windows:
+        window["color"] = _bar_hex(int(window["pct"]))
+
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "fragments/llm_usage_embed.html",
+        {"windows": windows, "warning": warning},
+    )
+
+
 @router.get("/llm")
 def llm_usage_json() -> Any:
     """Return raw LLM usage data as JSON for external consumers.
