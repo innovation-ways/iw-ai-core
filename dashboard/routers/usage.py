@@ -37,19 +37,21 @@ def _bar_color(pct: int) -> str:
 
 
 def _bar_hex(pct: int) -> str:
-    """Return a hex bar color mirroring _bar_color's thresholds (for embeds).
+    """Return a usage-bar color on a green->amber->red gradient by percentage.
+
+    The hue scales continuously with usage so every percentage maps to a
+    distinct color (low usage green, mid amber, high red) — an at-a-glance
+    indicator, rather than one flat color shared by all low values.
 
     Args:
         pct: Usage percentage (0–100).
 
     Returns:
-        Hex color — red at >=90%, amber at >=70%, blue otherwise.
+        An ``hsl(...)`` CSS color string.
     """
-    if pct >= 90:
-        return "#ef4444"
-    if pct >= 70:
-        return "#f59e0b"
-    return "#3b82f6"
+    pct = max(0, min(100, pct))
+    hue = 120 - (pct * 1.2)  # 0% -> 120 (green), 50% -> 60 (amber), 100% -> 0 (red)
+    return f"hsl({hue:.0f}, 75%, 48%)"
 
 
 @router.get("/llm/embed", response_class=HTMLResponse)
