@@ -97,11 +97,15 @@ def llm_usage_embed(request: Request, provider: str = "claude") -> Any:
     for window in windows:
         window["color"] = _bar_hex(int(window["pct"]))
 
-    return request.app.state.templates.TemplateResponse(
+    response = request.app.state.templates.TemplateResponse(
         request,
         "fragments/llm_usage_embed.html",
         {"windows": windows, "warning": warning},
     )
+    # Bars must always reflect live usage; never let a browser/iframe serve a
+    # stale (e.g. differently-colored) cached copy.
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 
 @router.get("/llm")
