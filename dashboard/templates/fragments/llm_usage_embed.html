@@ -19,8 +19,10 @@
     .lbl { min-width: 62px; color: #94a3b8; font-variant-numeric: tabular-nums; white-space: nowrap; }
     /* forced-color-adjust:none keeps our custom colors in Windows High-Contrast
        / forced-colors mode, which otherwise replaces backgrounds with grey. */
-    .track { flex: 1; height: 6px; background: rgba(148, 163, 184, 0.25); border-radius: 9999px; overflow: hidden; forced-color-adjust: none; }
-    .fill { height: 100%; border-radius: 9999px; transition: width 0.7s ease; forced-color-adjust: none; }
+    /* display:block is essential — these are <span>s, and inline elements
+       ignore width/height, which rendered the fill at 0x0 (invisible color). */
+    .track { display: block; flex: 1; height: 6px; background: rgba(148, 163, 184, 0.25); border-radius: 9999px; overflow: hidden; forced-color-adjust: none; }
+    .fill { display: block; width: 0; height: 100%; border-radius: 9999px; transition: width 0.7s ease; forced-color-adjust: none; }
     .pct { min-width: 34px; text-align: right; font-weight: 600; color: #e2e8f0; font-variant-numeric: tabular-nums; }
     .warn { font-size: 12px; color: #f59e0b; }
     {% for w in windows %}
