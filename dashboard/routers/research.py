@@ -378,6 +378,38 @@ def research_pdf(
     )
 
 
+@router.get("/research/{doc_id}/md")
+def research_markdown(
+    project_id: str,
+    doc_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve a research document's raw Markdown source as a download attachment.
+
+    The stored ``ProjectDoc.content`` is returned verbatim (the authoritative
+    source, including any ``[[wikilinks]]``) — no rendering or caching is needed.
+
+    Args:
+        project_id: The project the document belongs to.
+        doc_id: The research document to export as Markdown.
+        db: Active database session.
+
+    Returns:
+        A ``text/markdown`` response with a ``.md`` download filename header.
+
+    Raises:
+        HTTPException: 404 when the document, its content, or its research type does not match.
+    """
+    _get_project_or_404(project_id, db)
+    doc = _get_research_doc_or_404(project_id, doc_id, db)
+
+    return Response(
+        content=doc.content,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{doc.slug}-v{doc.version}.md"'},
+    )
+
+
 @router.get("/api/research/search", response_class=HTMLResponse)
 def research_search(
     project_id: str,

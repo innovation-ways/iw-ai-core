@@ -1,10 +1,12 @@
-"""Tests for research-document PDF view + download routes (Chromium + Paged.js).
+"""Tests for research-document PDF + Markdown download routes.
 
 The research view mirrors the docs view: a research document can be viewed inline
-as a PDF (``/research/{doc_id}/pdf-view``) and downloaded as an attachment
-(``/research/{doc_id}/pdf``). Both routes render markdown through the shared
+as a PDF (``/research/{doc_id}/pdf-view``), downloaded as a PDF attachment
+(``/research/{doc_id}/pdf``), and downloaded as its raw Markdown source
+(``/research/{doc_id}/md``). The PDF routes render markdown through the shared
 branded ``pdf/doc_pdf.html`` template and the ``render_pdf_chromium`` worker, and
-cache the result on disk keyed by doc version.
+cache the result on disk keyed by doc version; the Markdown download serves
+``ProjectDoc.content`` verbatim from the database with no rendering.
 
 Semantic correctness over shape checking:
 - BAD:  assert response.status_code == 200  (any backend gives 200)
@@ -254,3 +256,53 @@ def test_research_detail_page_has_pdf_tab_and_download(
     assert (
         body.find(f'href="/project/{research_project.id}/research/{research_doc.doc_id}/pdf"') != -1
     )
+
+
+# ---------------------------------------------------------------------------
+# md (download) route
+# ---------------------------------------------------------------------------
+
+
+def test_research_md_download_serves_raw_content_with_attachment(
+    client: TestClient, research_project: Project, research_doc: ProjectDoc
+):
+    """The Markdown download returns the stored content verbatim as a .md attachment."""
+    response = client.get(f"/project/{research_project.id}/research/{research_doc.doc_id}/md")
+
+    assert response.status_code == 200
+    # Raw source served verbatim — body must equal the stored markdown exactly.
+    assert response.text == research_doc.content
+    assert response.headers["content-type"].find("text/markdown") != -1
+    disposition = response.headers.get("content-disposition", "")
+    assert disposition.find("attachment") != -1
+    assert disposition.find(f"{research_doc.slug}-v{research_doc.version}.md") != -1
+
+
+def test_research_md_download_404_for_non_research_doc(
+    client: TestClient, research_project: Project, non_research_doc: ProjectDoc
+):
+    """The Markdown download rejects a non-research document with 404."""
+    response = client.get(f"/project/{research_project.id}/research/{non_research_doc.doc_id}/md")
+
+    assert response.status_code == 404
+
+
+def test_research_md_download_404_for_missing_doc(client: TestClient, research_project: Project):
+    """The Markdown download returns 404 when the document does not exist."""
+    response = client.get(f"/project/{research_project.id}/research/R-99999/md")
+
+    assert response.status_code == 404
+
+
+def test_research_detail_page_has_md_download(
+    client: TestClient, research_project: Project, research_doc: ProjectDoc
+):
+    """The research detail page exposes a Download MD link to the markdown attachment route."""
+    response = client.get(f"/project/{research_project.id}/research/{research_doc.doc_id}")
+
+    assert response.status_code == 200
+    body = response.text
+    assert (
+        body.find(f'href="/project/{research_project.id}/research/{research_doc.doc_id}/md"') != -1
+    )
+    assert body.find("Download MD") != -1
