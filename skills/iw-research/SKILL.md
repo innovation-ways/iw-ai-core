@@ -158,14 +158,81 @@ docs/research/{ID}-{slug}.md
 
 Where `slug` is a 3-5 word kebab-case descriptor of the topic.
 
-**Document requirements** (mandatory for all modes):
-- Title, ID, date, mode, primary question
-- Executive Summary (3-5 sentences)
-- Findings with `[HIGH/MEDIUM/LOW]` confidence markers in section headers
-- Every factual claim has inline source citation: `[source text](url)`
-- Recommendations section
-- Limitations section
-- Sources table with #, title, credibility, URL
+Write in a **hybrid analyst-led, rigor-backed** style: lead with the answer
+(BLUF/Pyramid Principle), prove it transparently, and calibrate every claim. The
+full template, section-by-section rules, and writing checklist live in
+`references/output_format.md`; grounding research is
+[R-00158](../../docs/research/R-00158-research-report-writing-best-practices.md).
+
+**Mandatory section structure** (scale to depth — short research may merge Analysis
+into Findings and embed Background/Scope in the Introduction; deep research uses all):
+
+1. **Title + metadata** (ID, date, mode, depth, status, primary question)
+2. **Executive Summary** — BLUF: lead with the answer; standalone (a reader can act
+   on it alone); top findings + top recommendation; write it **last**; ~5-10%.
+3. **Introduction** — **Why this research** (motivation/trigger), **Objectives**
+   (what we expect to learn), **Scope** (in/out). Never use conclusion words
+   ("found", "shows") here — this is framing, not results.
+4. **Background & Context** — domain context, key concepts/definitions, prior/related
+   work needed to understand the findings. (Embed in the Introduction if short.)
+5. **Methodology** (brief) — sources approach (primary/secondary) + declare the
+   `[HIGH/MEDIUM/LOW]` confidence scale. (Optional for quick mode.)
+6. **Findings** — declarative headings that state the finding; **claim first, then
+   evidence**; `[HIGH/MEDIUM/LOW]` marker on each; inline `[source](url)` citations;
+   visualizations per the rules below. A finding = *what was observed*.
+7. **Analysis / Discussion** — synthesize across findings, surface tensions, say what
+   it means. (May merge into Findings for short research.)
+8. **Conclusion** *(MANDATORY — never omit)* — first sentence restates the primary
+   question as a **declarative answer**; synthesize (don't restate findings); state
+   implications ("so what"); introduce **no new evidence**; no apologetic hedging.
+9. **Recommendations** — each traces to a finding/conclusion: *"To help with X, we
+   recommend Y, because Z."* Prioritized and specific.
+10. **Limitations** — constraints **outside your control** (distinct from Scope, which
+    is in the Introduction). State confidently, not apologetically.
+11. **Sources** — table with #, title, credibility, URL.
+
+**The firewall — keep these three categorically distinct and in separate sections:**
+*Findings = what was observed · Conclusions = what it means · Recommendations = what
+to do.* Collapsing them into one block is the most damaging structural error.
+
+**Writing craft:** declarative finding headings (not topic labels); active voice;
+define terms on first use; weave citations with signal phrases; every claim is
+evidence, inference, or assumption (never conflate them).
+
+### Visualizations (apply per finding while writing)
+
+A research document is not text-only. Where a finding has a **shape** — a flow,
+hierarchy, relationship, trend, distribution, or positioning — embed a figure;
+where it is a single number or a few exact values, use **bold text or a table**
+instead. Diagrams render natively in the dashboard and PDF (fenced ` ```mermaid `
+and ` ```d2 ` blocks → SVG; brand theme applied automatically).
+
+Run this decision for each finding:
+
+1. **Visualize the shape, tabulate/narrate the values.** One number → bold inline.
+   A handful of exact values in one unit → markdown table. A trend, flow,
+   hierarchy, relationship, distribution, or positioning → a figure.
+2. **Pick the chart by the data relationship** (FT Visual Vocabulary): comparison →
+   bar (≤15 categories); change over time → line/area (ordered x-axis only);
+   part-to-whole → stacked bar/treemap (pie only for 2-3 slices); relationship →
+   scatter/bubble; distribution → histogram/boxplot; flow/process → flowchart or
+   Sankey; positioning of options → 2×2 quadrant matrix.
+3. **Make each figure self-contained**: a **declarative title that states the
+   takeaway** (not "X vs Y"), a one-line "why this figure" framing blockquote
+   *before* it, and the interpretation in prose *after* it. Caption carries units
+   and the data **source**.
+4. **Accessibility & restraint**: never encode by color alone (use labels/shapes/
+   line styles too); keep figures decluttered (no chartjunk, no 3D/dual-axis);
+   budget roughly one orienting figure plus one per shaped finding — not a figure
+   per section by rote.
+
+For quantitative data (benchmarks, market sizes, shares), prefer a chart over a
+prose dump: Mermaid `xychart-beta` covers bar/line; otherwise present the numbers
+as a table. See `references/output_format.md` → "Visualizations" for the full
+chart-selection table, syntax examples, and the accessibility checklist, and
+[R-00051](../../docs/research/R-00051-beautiful-diagram-tools.md) /
+[R-00153](../../docs/research/R-00153-research-visualization-best-practices.md)
+for the underlying tool and editorial guidance.
 
 ---
 
@@ -234,8 +301,19 @@ Present a summary to the user:
 - **MUST** present GO/NO-GO checkpoint before any web tool calls
 - **MUST** write the research document only after explicit GO
 - **MUST** include confidence markers `[HIGH/MEDIUM/LOW]` on every finding
+- **MUST** follow the mandatory section structure (Step 5): Executive Summary →
+  Introduction (Why/Objectives/Scope) → Background → Findings → Analysis →
+  **Conclusion** → Recommendations → Limitations → Sources
+- **MUST** include a synthesizing **Conclusion** that answers the primary question —
+  never omit it, and never let it merely restate the findings
+- **MUST** keep the firewall: Findings (what was observed) vs Conclusions (what it
+  means) vs Recommendations (what to do) as distinct sections
 - **MUST** cite every factual claim with an inline source URL
 - **MUST** call `iw register` and `iw doc-update` at the end
+- **MUST** consider a visualization for every finding that has a shape (flow,
+  hierarchy, relationship, trend, distribution, positioning) — embed a brand-themed
+  ` ```mermaid `/` ```d2 ` figure with a declarative title, framing, and source;
+  use a table or bold text for exact values. See Step 5 → "Visualizations".
 - **NEVER** implement code — this is a documentation/research skill
 - **NEVER** make web calls before GO checkpoint
 - **NEVER** skip the Sources table — it is required for all modes

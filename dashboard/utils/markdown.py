@@ -535,7 +535,40 @@ def render_markdown(text: str | None) -> str:
     return converter.convert(text)
 
 
-def render_markdown_with_callouts(text: str | None, render_mermaid: bool = True) -> str:
+_WIKILINK_RE = re.compile(r"\[\[\s*(R-\d{4,6})\s*(?:\|\s*([^\]]+?)\s*)?\]\]")
+
+
+def _convert_research_wikilinks(text: str, project_id: str | None) -> str:
+    """Rewrite ``[[R-NNNNN]]`` / ``[[R-NNNNN|label]]`` references to markdown links.
+
+    Cross-references between research documents are authored with the ``[[id]]``
+    wiki-link syntax. The markdown converter does not understand it, so it would
+    otherwise render literally (e.g. ``[[R-00155]]``). This pre-processing step
+    turns each into a normal markdown link before conversion.
+
+    Args:
+        text: Raw markdown source.
+        project_id: Owning project; when provided the link targets that project's
+            research detail route. When None, the reference renders as plain label
+            text (no link) so non-research callers never show raw brackets.
+
+    Returns:
+        Markdown with research wiki-links rewritten.
+    """
+
+    def _repl(match: re.Match[str]) -> str:
+        doc_id = match.group(1)
+        label = match.group(2) or doc_id
+        if project_id:
+            return f"[{label}](/project/{project_id}/research/{doc_id})"
+        return label
+
+    return _WIKILINK_RE.sub(_repl, text)
+
+
+def render_markdown_with_callouts(
+    text: str | None, render_mermaid: bool = True, project_id: str | None = None
+) -> str:
     """Convert markdown to HTML and post-process GitHub-style callout blockquotes.
 
     Converts ``<blockquote><p>[!TYPE]...</p></blockquote>`` patterns into
@@ -549,7 +582,19 @@ def render_markdown_with_callouts(text: str | None, render_mermaid: bool = True)
     Fenced ``d2`` blocks are ALWAYS rendered server-side (regardless of
     ``render_mermaid``) because, unlike Mermaid, D2 has no client-side renderer —
     leaving them unrendered would show raw DSL on the page.
+
+    Args:
+        text: Raw markdown source.
+        render_mermaid: When True, render Mermaid blocks to SVG server-side.
+        project_id: When provided, ``[[R-NNNNN]]`` research cross-references are
+            linked to that project's research detail route; otherwise they render
+            as plain label text.
+
+    Returns:
+        Rendered HTML safe for use with the Jinja2 ``| safe`` filter.
     """
+    if text:
+        text = _convert_research_wikilinks(text, project_id)
     result = render_markdown(text)
     if "language-mermaid" in result:
         if render_mermaid:

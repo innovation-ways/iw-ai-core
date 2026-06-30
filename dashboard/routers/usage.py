@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from orch.llm_usage import get_llm_usage
 
@@ -34,6 +34,21 @@ def _bar_color(pct: int) -> str:
     if pct >= 70:
         return "bg-amber-500"
     return "bg-primary"
+
+
+@router.get("/llm")
+def llm_usage_json() -> Any:
+    """Return raw LLM usage data as JSON for external consumers.
+
+    Unlike ``/llm/fragment`` (which renders the dashboard footer as HTML), this
+    returns the plain per-provider dict from ``get_llm_usage()`` so external
+    tools — e.g. a gethomepage.dev Custom API widget — can map the numeric
+    fields directly. Reuses the same 60s in-process cache as the fragment.
+
+    Returns:
+        JSON object with ``claude``, ``minimax``, and ``codex`` usage snapshots.
+    """
+    return JSONResponse(get_llm_usage())
 
 
 @router.get("/llm/fragment", response_class=HTMLResponse)

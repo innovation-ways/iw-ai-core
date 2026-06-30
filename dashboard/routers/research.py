@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from dashboard.utils.markdown import render_markdown
+from dashboard.utils.markdown import (
+    render_markdown_with_callouts,
+    render_pdf_chromium,
+)
 from orch.db.models import DocStatus, DocType, EditorialCategory, Project, ProjectDoc
 from orch.doc_service import DocService
 
@@ -136,7 +140,14 @@ def research_detail(
     if doc.doc_type != DocType.research:
         raise HTTPException(status_code=404, detail="Document not found")
     versions = svc.list_doc_versions(project_id, doc_id)
-    content_html = render_markdown(doc.content) if doc.content else ""
+    # render_mermaid=False keeps Mermaid as code blocks for the client-side runtime
+    # (research_detail.html shim), but D2 blocks are always server-rendered to SVG
+    # because D2 has no browser renderer; callouts are styled here too.
+    content_html = (
+        render_markdown_with_callouts(doc.content, render_mermaid=False, project_id=project_id)
+        if doc.content
+        else ""
+    )
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -173,7 +184,9 @@ def research_html_view(
 
         return Response(content=html_bytes, media_type="text/html")
 
-    rendered = render_markdown(doc.content)
+    # Standalone iframe served without the Mermaid client runtime, so render all
+    # diagrams (Mermaid + D2) server-side to inline SVG.
+    rendered = render_markdown_with_callouts(doc.content, project_id=project_id)
     fallback_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -197,6 +210,204 @@ def research_html_view(
     from fastapi.responses import Response
 
     return Response(content=fallback_html, media_type="text/html")
+
+
+def _get_research_doc_or_404(project_id: str, doc_id: str, db: Session) -> ProjectDoc:
+    """Fetch a research document by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project that owns the document.
+        doc_id: The document identifier.
+        db: Active database session.
+
+    Returns:
+        The matching research ProjectDoc row (doc_type=research, with content).
+
+    Raises:
+        HTTPException: 404 when the doc is missing, is not a research doc, or has no content.
+    """
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if doc.doc_type != DocType.research:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.content is None:
+        raise HTTPException(status_code=404, detail="No content to generate PDF from")
+    return doc
+
+
+def _render_research_pdf_cached(
+    project: Project, doc: ProjectDoc, request: Request, db: Session
+) -> bytes | None:
+    """Render a research document to PDF bytes, caching the result on disk.
+
+    Returns the cached PDF when one exists for the current doc version; otherwise
+    renders the markdown content through the shared branded PDF template and
+    Chromium worker, caches the result keyed by doc version, and returns the bytes.
+
+    Args:
+        project: The project that owns the document (provides the cache repo_root).
+        doc: The research document to render (must have non-None content).
+        request: The current FastAPI request (used to resolve templates).
+        db: Active database session (used to persist the cache path).
+
+    Returns:
+        The rendered PDF bytes, or ``None`` when the Chromium worker is unavailable.
+    """
+    # Use cached PDF if available
+    if doc.pdf_path and Path(doc.pdf_path).exists():
+        return Path(doc.pdf_path).read_bytes()
+
+    templates: Jinja2Templates = request.app.state.templates
+    pdf_template = templates.get_template("pdf/doc_pdf.html")
+    html_content = pdf_template.render(
+        doc=doc,
+        project=project,
+        rendered_content=render_markdown_with_callouts(doc.content or "", project_id=project.id),
+        generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    pdf_bytes = render_pdf_chromium(html_content)
+    if pdf_bytes is None:
+        return None
+
+    # Cache to disk keyed by doc version
+    cache_dir = Path(project.repo_root) / "docs" / ".generated" / project.id
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{doc.doc_id}-v{doc.version}.pdf"
+        cache_file.write_bytes(pdf_bytes)
+        DocService(db).update_doc(project.id, doc.doc_id, pdf_path=str(cache_file))
+        db.commit()
+    except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to write pdf_path cache for research doc %s/%s", project.id, doc.doc_id
+        )
+    return pdf_bytes
+
+
+@router.get("/research/{doc_id}/pdf-view")
+def research_pdf_view(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve a research PDF inline for embedding in an iframe (no attachment header)."""
+    project = _get_project_or_404(project_id, db)
+    doc = _get_research_doc_or_404(project_id, doc_id, db)
+
+    pdf_bytes = _render_research_pdf_cached(project, doc, request, db)
+    if pdf_bytes is None:
+        # Styled HTML fallback so the iframe shows a message, not a blank screen.
+        unavailable_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF unavailable</title>
+<style>
+  body { font-family: system-ui, sans-serif; display: flex; align-items: center;
+         justify-content: center; min-height: 100vh; margin: 0;
+         background: #f8fafc; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+          padding: 32px 40px; max-width: 440px; text-align: center;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  h2 { color: #1e293b; font-size: 1.125rem; margin: 0 0 12px; }
+  p  { color: #64748b; font-size: 0.9rem; line-height: 1.5; margin: 0 0 20px; }
+  .hint { background: #f1f5f9; border-radius: 6px; padding: 12px;
+           font-size: 0.8rem; color: #475569; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>PDF unavailable</h2>
+  <p>Chromium binary not found on this server. The HTML view is accessible below.</p>
+  <div class="hint">Install Chromium or check the
+   <code>_PLAYWRIGHT_CHROME</code> environment variable.</div>
+</div>
+</body>
+</html>"""
+        return Response(content=unavailable_html, media_type="text/html", status_code=200)
+
+    return Response(content=pdf_bytes, media_type="application/pdf")
+
+
+@router.get("/research/{doc_id}/pdf")
+def research_pdf(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Generate and serve a research PDF download (with Content-Disposition: attachment).
+
+    Args:
+        project_id: The project the document belongs to.
+        doc_id: The research document to export as PDF.
+        request: The current FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        A PDF binary response with a download filename header, or 503 JSON when
+        Chromium is unavailable.
+
+    Raises:
+        HTTPException: 404 when the document, its content, or its research type does not match.
+    """
+    project = _get_project_or_404(project_id, db)
+    doc = _get_research_doc_or_404(project_id, doc_id, db)
+
+    pdf_bytes = _render_research_pdf_cached(project, doc, request, db)
+    if pdf_bytes is None:
+        return JSONResponse(
+            {
+                "error": "PDF generation unavailable",
+                "detail": "Chromium binary not found — check _PLAYWRIGHT_CHROME path",
+            },
+            status_code=503,
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{doc.slug}-v{doc.version}.pdf"'},
+    )
+
+
+@router.get("/research/{doc_id}/md")
+def research_markdown(
+    project_id: str,
+    doc_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve a research document's raw Markdown source as a download attachment.
+
+    The stored ``ProjectDoc.content`` is returned verbatim (the authoritative
+    source, including any ``[[wikilinks]]``) — no rendering or caching is needed.
+
+    Args:
+        project_id: The project the document belongs to.
+        doc_id: The research document to export as Markdown.
+        db: Active database session.
+
+    Returns:
+        A ``text/markdown`` response with a ``.md`` download filename header.
+
+    Raises:
+        HTTPException: 404 when the document, its content, or its research type does not match.
+    """
+    _get_project_or_404(project_id, db)
+    doc = _get_research_doc_or_404(project_id, doc_id, db)
+
+    return Response(
+        content=doc.content,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{doc.slug}-v{doc.version}.md"'},
+    )
 
 
 @router.get("/api/research/search", response_class=HTMLResponse)
