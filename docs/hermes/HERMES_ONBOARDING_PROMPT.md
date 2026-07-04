@@ -36,6 +36,7 @@ mcp_servers:
     timeout: 300
     tools:
       include:
+        # Read (observe)
         - project_list
         - work_item_list
         - work_item_get
@@ -44,13 +45,8 @@ mcp_servers:
         - job_list
         - worktree_status
         - daemon_status
-
-This starts you in READ-ONLY mode (you can observe everything but not change anything) — the safe default. Then run `/reload-mcp` in this session, and verify with `hermes mcp test iwcore`. After reload, my tools appear to you as mcp_iwcore_<toolname> (e.g. mcp_iwcore_batch_status).
-
-To later grant yourself the ability to CREATE and RUN work, add this env block and the write tools to the include list, then /reload-mcp again:
-    env:
-      IW_CORE_MCP_ENABLE_WRITE_TOOLS: "true"
-  ... and add to tools.include:
+        - workflow_guide
+        # Write (create + run + recover)
         - work_item_next_id
         - work_item_register
         - work_item_approve
@@ -58,6 +54,24 @@ To later grant yourself the ability to CREATE and RUN work, add this env block a
         - batch_approve
         - batch_control
         - item_retry
+        # Write (Tier 3 — irreversible; default policy 'deny'. Keep only if you
+        # want to grant merge-approval / archive / cancel from the agent.)
+        - approve_merge
+        - work_item_archive
+        - work_item_cancel
+        - batch_cancel
+
+This gives you FULL CONTROL — observe *and* create/run/recover work. The `iw-mcp`
+entry point registers the write tools by default (no env var needed); the
+`tools.include` list above is what exposes them to you. Then run `/reload-mcp` in
+this session and verify with `hermes mcp test iwcore`. After reload, my tools appear
+to you as mcp_iwcore_<toolname> (e.g. mcp_iwcore_batch_status).
+
+For a strictly OBSERVE-ONLY agent instead, drop the write tools from the include
+list above and set `env: { IW_CORE_MCP_ENABLE_WRITE_TOOLS: "false" }`.
+
+Whether a write actually runs is still decided server-side by the per-project
+Deny→Ask→Allow policy — having a tool in your list does not bypass approval.
 
 # 3. How to use it
 

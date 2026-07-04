@@ -134,3 +134,60 @@ class TestWriteToolGating:
                 assert tool.annotations.readOnlyHint is False, (
                     f"Write tool '{tool.name}' should have readOnlyHint=False"
                 )
+
+
+class TestEntryPointWriteDefault:
+    """Covers that the iw-mcp entry point (main) is writable by default."""
+
+    def _run_main_on(self, monkeypatch: pytest.MonkeyPatch) -> set[str]:
+        """Invoke server.main() against a throwaway server and return its tool names.
+
+        Stubs the live-DB bridge and the blocking ``run`` call so ``main`` can be
+        driven synchronously in a test without starting a real stdio server.
+
+        Args:
+            monkeypatch: pytest monkeypatch fixture.
+
+        Returns:
+            The set of tool names registered on the throwaway server after main().
+        """
+        import contextlib  # noqa: PLC0415
+
+        from fastmcp import FastMCP  # noqa: PLC0415
+
+        from orch.mcp import server as server_mod  # noqa: PLC0415
+
+        fresh = FastMCP("test-main-entrypoint")
+        server_mod.read_tools.register(fresh)
+        monkeypatch.setattr(server_mod, "mcp", fresh)
+
+        @contextlib.contextmanager
+        def _fake_bridge():
+            yield
+
+        monkeypatch.setattr("orch.db.live_db_guard.iw_cli_orch_bridge", _fake_bridge, raising=True)
+        monkeypatch.setattr(fresh, "run", lambda *_a, **_k: None, raising=False)
+
+        server_mod.main()
+        return {t.name for t in asyncio.run(fresh.list_tools())}
+
+    def test_main_registers_write_tools_when_flag_unset(self, monkeypatch: pytest.MonkeyPatch):
+        """Verifies iw-mcp defaults writable: main() registers write tools when flag is unset."""
+        monkeypatch.delenv("IW_CORE_MCP_ENABLE_WRITE_TOOLS", raising=False)
+
+        names = self._run_main_on(monkeypatch)
+
+        assert names >= _EXPECTED_WRITE_TOOLS, (
+            f"Entry point should register write tools by default; missing: "
+            f"{_EXPECTED_WRITE_TOOLS - names}"
+        )
+
+    def test_main_respects_explicit_false_optout(self, monkeypatch: pytest.MonkeyPatch):
+        """Verifies an explicit IW_CORE_MCP_ENABLE_WRITE_TOOLS=false keeps main() read-only."""
+        monkeypatch.setenv("IW_CORE_MCP_ENABLE_WRITE_TOOLS", "false")
+
+        names = self._run_main_on(monkeypatch)
+
+        assert names.isdisjoint(_EXPECTED_WRITE_TOOLS), (
+            f"Explicit false must opt out of write tools; leaked: {_EXPECTED_WRITE_TOOLS & names}"
+        )

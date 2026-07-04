@@ -33,13 +33,24 @@ iw mcp serve      # same thing, as an iw subcommand
 
 It connects to the orchestration DB using the standard `orch.config` settings (read from `.env`), under the same `iw_cli_orch_bridge` the CLI uses, so the live-DB guard permits it. The app DB role (`iw_orch`) is intentionally **non-superuser** — keep it that way; it is the authoritative least-privilege backstop.
 
-**Read-only by default.** Write tools are **not registered** unless you opt in:
+**Writable by default via the `iw-mcp` entry point.** The `iw-mcp` / `iw mcp serve`
+console entry point is the agent-control surface, so it registers the create/approve/batch/…
+write tools **by default**. To run a strictly *observe-only* server instead, set the flag falsey:
 
 ```bash
-export IW_CORE_MCP_ENABLE_WRITE_TOOLS=true   # exposes the create/approve/batch/… tools
+export IW_CORE_MCP_ENABLE_WRITE_TOOLS=false   # read-only: only the 8 read tools are exposed
 ```
 
-With the flag unset, only the 8 read tools are exposed — a safe first deployment that lets Hermes *observe* the platform before it can *change* it (the PagerDuty `--enable-write-tools` pattern).
+Registering the write tools does **not** make consequential actions unconditionally
+executable — every Tier-1/2/3 tool is still governed server-side by the per-project
+Deny→Ask→Allow policy engine (§5). So "writable by default" means *the tools are visible*;
+whether a given call runs, asks for approval, or is refused is the policy's decision.
+
+> **Note — library default vs. entry-point default.** The underlying
+> `write_tools_enabled()` flag still defaults to **off** when read directly (so tests and
+> any embedding of the tool modules stay read-only unless they opt in). It is the `iw-mcp`
+> `main()` that flips the default **on** for the server process — an explicit
+> `IW_CORE_MCP_ENABLE_WRITE_TOOLS=false` always wins.
 
 ---
 
@@ -53,14 +64,16 @@ mcp_servers:
     command: "uv"
     args: ["--directory", "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core", "run", "iw-mcp"]
     env:
-      # Optional: enable write tools for this agent (default: read-only)
+      # iw-mcp registers write tools by default; set "false" for a read-only server.
       IW_CORE_MCP_ENABLE_WRITE_TOOLS: "true"
     enabled: true
     timeout: 300
     tools:
-      # RECOMMENDED allowlist — start with the smallest set. Add write tools
-      # deliberately. Hermes exposes tools to the model as mcp_iwcore_<tool>.
+      # Full-control allowlist. Hermes exposes tools to the model as
+      # mcp_iwcore_<tool>. For an observe-only agent, keep only the read tools
+      # (project_list … daemon_status) + workflow_guide and drop the writes.
       include:
+        # Read (Tier 0)
         - project_list
         - work_item_list
         - work_item_get
@@ -70,6 +83,20 @@ mcp_servers:
         - worktree_status
         - daemon_status
         - workflow_guide      # the governed-workflow MCP prompt
+        # Write (Tier 1–2 — needed to author, approve, batch, monitor, recover)
+        - work_item_next_id
+        - work_item_register
+        - work_item_approve
+        - batch_create
+        - batch_approve
+        - batch_control
+        - item_retry
+        # Write (Tier 3 — irreversible; default policy 'deny'. Include only if
+        # you intend to grant merge-approval / archive / cancel from the agent.)
+        - approve_merge
+        - work_item_archive
+        - work_item_cancel
+        - batch_cancel
       exclude: []
 ```
 
@@ -196,7 +223,7 @@ The agent re-invokes the same tool with `approval_token="kJ3…"`; the server re
 
 The server wraps a production orchestration DB with partly-irreversible actions, so it is built defensively even though it runs locally (R-00165 §5.8):
 
-- **Read-only by default** — write tools absent from the catalogue unless `IW_CORE_MCP_ENABLE_WRITE_TOOLS=true`.
+- **Writable by default, but policy-governed** — the `iw-mcp` entry point registers the write tools (set `IW_CORE_MCP_ENABLE_WRITE_TOOLS=false` for a read-only server), yet every Tier-1/2/3 tool is still gated server-side by the Deny→Ask→Allow policy engine. Registration ≠ unconditional execution.
 - **Least privilege at the DB role** — `iw_orch` is non-superuser; this is the authoritative backstop that survives any prompt-injection.
 - **Tiered gates** — Tier-3 (irreversible) defaults to deny; the most destructive operations (force-reset, bulk delete, raw DB ops) are **not exposed over MCP at all** — they remain operator-only in the CLI.
 - **Untrusted tool output** — work-item text, logs, and commit messages returned by tools are attacker-influenceable. Treat them as untrusted content; do not let a tool result auto-authorise another destructive tool. This is why gates are enforced **server-side**, not by client-side tool annotations (which are only hints).
@@ -208,7 +235,7 @@ The server wraps a production orchestration DB with partly-irreversible actions,
 
 | Env var | Default | Purpose |
 |---------|---------|---------|
-| `IW_CORE_MCP_ENABLE_WRITE_TOOLS` | `false` | Expose Tier-1/2/3 write tools. Off = read-only server. |
+| `IW_CORE_MCP_ENABLE_WRITE_TOOLS` | `true` via `iw-mcp` (library default `false`) | Expose Tier-1/2/3 write tools. The `iw-mcp` entry point defaults it on; set `false` for a read-only server. |
 | `IW_CORE_MCP_APPROVAL_TTL_SECONDS` | `3600` | Lifetime of an approval token before it expires. |
 | (all standard `IW_CORE_DB_*`) | — | Orchestration DB connection (read from `.env`). |
 
