@@ -438,6 +438,47 @@ class TestMcpPolicyList:
         assert data["policies"][0]["tool_name"] == "work_item_cancel"
         assert data["policies"][0]["decision"] == "deny"
 
+    def test_policy_list_survives_session_close(
+        self,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """policy list materialises rows inside the session (no detach error after close)."""
+        from contextlib import contextmanager  # noqa: PLC0415
+
+        db_session.add(
+            McpPolicy(
+                project_id=test_project.id,
+                tool_name="batch_create",
+                decision=McpPolicyDecision.allow,
+            )
+        )
+        db_session.flush()
+
+        @contextmanager
+        def _closing_get_session() -> object:
+            """Mirror production get_session(): expire + detach ORM rows on exit."""
+            try:
+                yield db_session
+            finally:
+                # Reproduces the real get_session() lifecycle: attributes are
+                # expired and instances detached on __exit__, so any lazy access
+                # to an ORM row after the `with` block raises DetachedInstanceError.
+                db_session.expire_all()
+                db_session.expunge_all()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["--project", test_project.id, "--json", "mcp", "policy", "list", test_project.id],
+            obj={"get_session": _closing_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, f"stdout: {result.output}"
+        data = json.loads(result.output)
+        tool_names = [p["tool_name"] for p in data["policies"]]
+        assert tool_names.count("batch_create") == 1
+
     def test_policy_list_filtered_by_project(
         self,
         db_session: Session,

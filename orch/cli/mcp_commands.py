@@ -285,16 +285,18 @@ def policy_list(ctx: click.Context, project_id: str | None) -> None:
             query = query.where(McpPolicy.project_id == project_id)
         rows = session.execute(query).scalars().all()
 
-    policies = [
-        {
-            "project_id": r.project_id,
-            "tool_name": r.tool_name,
-            "decision": r.decision.value,
-            "updated_by": r.updated_by,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-        }
-        for r in rows
-    ]
+        # Materialise dicts inside the session — rows detach on exit and would
+        # raise DetachedInstanceError on any lazy attribute access afterwards.
+        policies = [
+            {
+                "project_id": r.project_id,
+                "tool_name": r.tool_name,
+                "decision": r.decision.value,
+                "updated_by": r.updated_by,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            }
+            for r in rows
+        ]
 
     if ctx.obj.get("json"):
         click.echo(json.dumps({"policies": policies}))
