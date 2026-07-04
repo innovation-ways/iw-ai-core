@@ -9,6 +9,7 @@ from orch.cli.batch_commands import (
     batch_approve,
     batch_cancel,
     batch_create,
+    batch_list,
     batch_pause,
     batch_resume,
     batch_status,
@@ -33,10 +34,12 @@ from orch.cli.item_commands import (
     item_report,
     item_retry,
     item_status,
+    items_list,
     register,
     unapprove,
 )
 from orch.cli.lock_commands import migration_lock
+from orch.cli.mcp_commands import mcp_group
 from orch.cli.merge_queue_commands import merge_queue_group
 from orch.cli.migrations_commands import migrations_group
 from orch.cli.oss_commands import oss
@@ -122,6 +125,7 @@ cli.add_command(item_cancel, name="item-cancel")
 cli.add_command(item_retry)
 cli.add_command(item_status)
 cli.add_command(item_report)
+cli.add_command(items_list, name="items-list")
 cli.add_command(step_start)
 cli.add_command(step_done)
 cli.add_command(step_fail)
@@ -135,6 +139,7 @@ cli.add_command(batch_status)
 cli.add_command(batch_pause)
 cli.add_command(batch_resume)
 cli.add_command(batch_cancel, name="batch-cancel")
+cli.add_command(batch_list, name="batch-list")
 cli.add_command(daemon_event)
 cli.add_command(migration_lock)
 cli.add_command(search)
@@ -160,3 +165,4 @@ cli.add_command(regression_classify, name="regression-classify")
 cli.add_command(migrations_group, name="migrations")
 cli.add_command(merge_queue_group, name="merge-queue")
 cli.add_command(test_health_capture, name="test-health-capture")
+cli.add_command(mcp_group, name="mcp")

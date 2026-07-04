@@ -4280,3 +4280,201 @@ class TestHealthSnapshot(Base):
     )
 
     project: Mapped["Project"] = relationship("Project")
+
+
+# ---------------------------------------------------------------------------
+# MCP agent-control layer (R-00165)
+# ---------------------------------------------------------------------------
+
+
+class McpApprovalStatus(enum.Enum):
+    """Lifecycle status of an MCP approval request.
+
+    Attributes:
+        pending: Awaiting a human decision.
+        approved: A human approved; the token may be redeemed once.
+        denied: A human denied the request.
+        consumed: The approved token was redeemed to execute the tool.
+        expired: The request passed its ``expires_at`` without a decision.
+    """
+
+    pending = "pending"
+    approved = "approved"
+    denied = "denied"
+    consumed = "consumed"
+    expired = "expired"
+
+
+class McpPolicyDecision(enum.Enum):
+    """Effective policy decision for an MCP tool invocation.
+
+    Attributes:
+        allow: Execute without a human gate.
+        ask: Require human approval before executing.
+        deny: Refuse execution outright.
+    """
+
+    allow = "allow"
+    ask = "ask"
+    deny = "deny"
+
+
+class McpAuditLog(Base):
+    """Append-only audit trail of MCP tool invocations (R-00165). Never UPDATEd.
+
+    Attributes:
+        tool_name: The MCP tool that was invoked.
+        outcome: Result category (success, error, denied, approval_required).
+    """
+
+    __tablename__ = "mcp_audit_log"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True, doc="Primary key identifier."
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+        doc="UTC timestamp when the tool call was recorded.",
+    )
+    project_id: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        doc="Owning project, or NULL for non-project-scoped tools (e.g. project_list).",
+    )
+    tool_name: Mapped[str] = mapped_column(
+        Text, nullable=False, doc="Name of the MCP tool that was invoked."
+    )
+    actor: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Client/agent identifier when known, else NULL."
+    )
+    arguments: Mapped[Any] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'"),
+        doc="Scrubbed tool arguments (secrets redacted).",
+    )
+    decision: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Policy decision (allow/ask/deny) when a policy applied."
+    )
+    outcome: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        doc="Result category: success, error, denied, or approval_required.",
+    )
+    result_summary: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Short human-readable summary of the outcome."
+    )
+    error: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Error message when outcome is 'error'."
+    )
+
+    __table_args__ = (
+        Index("idx_mcp_audit_project", "project_id", "created_at"),
+        Index("idx_mcp_audit_tool", "tool_name", "created_at"),
+        {"comment": "Append-only audit trail of MCP tool invocations (R-00165)."},
+    )
+
+
+class McpApprovalRequest(Base):
+    """A human-approval request created when a gated MCP tool resolves to 'ask' (R-00165).
+
+    Attributes:
+        token: Opaque token returned to the agent to redeem after approval.
+        status: Approval lifecycle status.
+    """
+
+    __tablename__ = "mcp_approval_requests"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True, doc="Primary key identifier."
+    )
+    token: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        unique=True,
+        doc="Opaque approval token returned to the agent and redeemed on retry.",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+        doc="UTC timestamp when the approval request was created.",
+    )
+    project_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Owning project, or NULL for non-project-scoped tools."
+    )
+    tool_name: Mapped[str] = mapped_column(
+        Text, nullable=False, doc="Gated tool the approval authorises."
+    )
+    arguments: Mapped[Any] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'"),
+        doc="Arguments the tool will be invoked with once approved.",
+    )
+    status: Mapped[McpApprovalStatus] = mapped_column(
+        SAEnum(McpApprovalStatus, name="mcp_approval_status", native_enum=False),
+        nullable=False,
+        server_default=McpApprovalStatus.pending.value,
+        doc="Approval lifecycle status.",
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        _TIMESTAMPTZ, nullable=True, doc="UTC timestamp when approved or denied."
+    )
+    decided_by: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Operator identifier who approved or denied."
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=True,
+        doc="UTC expiry after which a pending token is treated as expired.",
+    )
+
+    __table_args__ = (
+        Index("idx_mcp_approval_status", "status", "created_at"),
+        {"comment": "Pending human-approval requests for gated MCP tools (R-00165)."},
+    )
+
+
+class McpPolicy(Base):
+    """Per-project, per-tool runtime policy override for MCP tools (R-00165).
+
+    The highest-priority policy layer: a matching row overrides both the
+    ``projects.toml`` policy block and the built-in per-tier default.
+
+    Attributes:
+        decision: The effective decision (allow/ask/deny) for the tool.
+    """
+
+    __tablename__ = "mcp_policies"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True, doc="Primary key identifier."
+    )
+    project_id: Mapped[str] = mapped_column(
+        Text, nullable=False, doc="Project the override applies to."
+    )
+    tool_name: Mapped[str] = mapped_column(
+        Text, nullable=False, doc="MCP tool the override applies to."
+    )
+    decision: Mapped[McpPolicyDecision] = mapped_column(
+        SAEnum(McpPolicyDecision, name="mcp_policy_decision", native_enum=False),
+        nullable=False,
+        doc="Effective decision: allow, ask, or deny.",
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+        doc="UTC timestamp of the last update to this override.",
+    )
+    updated_by: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Operator identifier who set the override."
+    )
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "tool_name", name="uq_mcp_policy_project_tool"),
+        {"comment": "Per-project per-tool runtime policy overrides for MCP tools (R-00165)."},
+    )

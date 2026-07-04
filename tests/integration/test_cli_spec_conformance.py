@@ -161,6 +161,9 @@ KNOWN_UNTESTED_COMMANDS: dict[str, dict[str, str]] = {
     "projects": {"reason": _DEFERRED},
     "projects list": {"reason": _DEFERRED},
     "test-health-capture": {"reason": _DEFERRED},
+    "mcp serve": {
+        "reason": "launches a blocking stdio MCP server — not safely testable with CliRunner",
+    },
 }
 
 

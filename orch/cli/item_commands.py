@@ -41,89 +41,14 @@ from orch.qv_gate_validator import auto_skip_phantom_qv_gates
 from orch.services import approve_merge
 
 # ---------------------------------------------------------------------------
-# Agent-facing CLI column pinning — see R2b in docs/IW_AI_Core_Agent_Constraints.md
+# Agent-facing CLI column pinning — canonical definitions live in
+# orch.services.work_items; imported here for backward compatibility.
+# See R2b in docs/IW_AI_Core_Agent_Constraints.md.
 # ---------------------------------------------------------------------------
-
-_WORK_ITEM_CLI_COLUMNS = (
-    WorkItem.project_id,
-    WorkItem.id,
-    WorkItem.type,
-    WorkItem.title,
-    WorkItem.status,
-    WorkItem.phase,
-    WorkItem.config,
-    WorkItem.depends_on,
-    WorkItem.blocks,
-    WorkItem.impacted_paths,
-    WorkItem.design_doc_path,
-    WorkItem.design_doc_content,
-    WorkItem.functional_doc_path,
-    WorkItem.functional_doc_content,
-    WorkItem.summary,
-    WorkItem.archive_path,
-    WorkItem.archive_size_bytes,
-    WorkItem.created_at,
-    WorkItem.updated_at,
-    WorkItem.completed_at,
-    WorkItem.archived_at,
-    # NOTE: manifest_digest intentionally excluded here — it is only used in
-    # register/approve, not in general item-status output. Loading it via
-    # load_only() would cause issues if the column is absent in pre-migration
-    # DBs (e.g. during daemon-upgrade rolling restarts).
-    # NOTE: diff_text, diff_summary, merge_commit_sha are intentionally
-    # excluded — they are feature-gate columns (F-00079) that the live
-    # orch DB may not have yet (migration un-applied). The CLI SELECT must
-    # not mention them so it does not crash against a drifted schema.
-)
-
-_WORKFLOW_STEP_CLI_COLUMNS = (
-    WorkflowStep.id,
-    WorkflowStep.project_id,
-    WorkflowStep.work_item_id,
-    WorkflowStep.step_number,
-    WorkflowStep.step_id,
-    WorkflowStep.agent_label,
-    WorkflowStep.opencode_agent,
-    WorkflowStep.step_type,
-    WorkflowStep.step_label,
-    WorkflowStep.description,
-    WorkflowStep.command,
-    WorkflowStep.gate,
-    # NOTE: gate is included in the pinned set — it was added by F-00079
-    # (merged), so it is present in both the in-process ORM and the live DB.
-    # Excluding it would break item-status output for all registered items.
-    WorkflowStep.timeout_secs,
-    WorkflowStep.status,
-    WorkflowStep.prompt_file,
-    WorkflowStep.report_file,
-    WorkflowStep.report_content,
-    WorkflowStep.started_at,
-    WorkflowStep.completed_at,
-)
-
-_BATCH_ITEM_CLI_COLUMNS = (
-    BatchItem.id,
-    BatchItem.project_id,
-    BatchItem.batch_id,
-    BatchItem.work_item_id,
-    BatchItem.execution_group,
-    # NOTE: status intentionally excluded — batch_items.status may be added
-    # by future features and not yet migrated to the live DB.
-    BatchItem.pid,
-    BatchItem.started_at,
-    BatchItem.merged_at,
-    BatchItem.notes,
-    BatchItem.stall_count,
-    BatchItem.last_progress,
-    BatchItem.worktree_info,
-    BatchItem.merge_info,
-    BatchItem.worktree_db_host,
-    BatchItem.worktree_db_port,
-    BatchItem.worktree_db_name,
-    BatchItem.worktree_db_user,
-    BatchItem.worktree_db_password,
-    BatchItem.worktree_app_port,
-    BatchItem.worktree_compose_path,
+from orch.services.work_items import (  # noqa: E402
+    _BATCH_ITEM_CLI_COLUMNS,
+    _WORK_ITEM_CLI_COLUMNS,
+    _WORKFLOW_STEP_CLI_COLUMNS,
 )
 
 # ---------------------------------------------------------------------------
@@ -1588,3 +1513,60 @@ def item_retry(ctx: click.Context, item_id: str) -> None:
             f"({', '.join(reset_step_ids)}), batch_item → pending, batch → executing, "
             f"work_item → in_progress"
         )
+
+
+# ---------------------------------------------------------------------------
+# items-list — NEW list/query command
+# ---------------------------------------------------------------------------
+
+
+@click.command("items-list")
+@click.option("--status", default=None, help="Filter by status (e.g. draft, approved)")
+@click.option(
+    "--type",
+    "item_type",
+    default=None,
+    help="Filter by item type (feature, incident, cr, research)",
+)
+@click.option("--phase", default=None, help="Filter by phase (active, done)")
+@click.option("--limit", default=50, show_default=True, help="Maximum items to return (cap: 50)")
+@click.option("--cursor", default=None, help="Pagination cursor from a previous call")
+@click.pass_context
+def items_list(
+    ctx: click.Context,
+    status: str | None,
+    item_type: str | None,
+    phase: str | None,
+    limit: int,
+    cursor: str | None,
+) -> None:
+    """List work items for the current project with optional filtering."""
+    from orch.services.work_items import list_work_items  # noqa: PLC0415
+
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            result = list_work_items(
+                session,
+                project_id,
+                status=status,
+                item_type=item_type,
+                phase=phase,
+                cursor=cursor,
+                limit=limit,
+            )
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps(result))
+    else:
+        items = result["items"]
+        total = result["total"]
+        click.echo(f"Work items ({len(items)} of {total}):")
+        for it in items:
+            click.echo(f"  {it['id']}  [{it['status']}]  {it['title'][:60]}")
+        if result.get("has_more"):
+            click.echo(f"  … more (cursor: {result['next_cursor']})")

@@ -11,6 +11,7 @@ No DB, no real subprocess, no actual Chromium launched.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -202,10 +203,27 @@ def test_path_lookup_none_when_nothing_found(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_render_pdf_chromium_returns_none_when_unresolved(monkeypatch, tmp_path):
-    """When _PLAYWRIGHT_CHROME is None, render_pdf_chromium returns None gracefully."""
-    # Patch _PLAYWRIGHT_CHROME to None (simulating resolver returning None)
+def _fake_failing_worker(cmd, *args, **kwargs):
+    """Simulate the PDF worker exiting non-zero — as it would with no usable Chromium.
+
+    Keeps this test environment-independent: on hosts where Playwright ships its
+    own browser, the worker would otherwise render successfully regardless of
+    ``_PLAYWRIGHT_CHROME``. Per this file's contract, no real subprocess runs.
+
+    Args:
+        cmd: The worker argv (ignored beyond echoing back).
+
+    Returns:
+        A CompletedProcess with returncode 1 so render_pdf_chromium degrades.
+    """
+    return subprocess.CompletedProcess(args=cmd, returncode=1, stdout=b"", stderr=b"no chromium")
+
+
+def test_render_pdf_chromium_returns_none_when_unresolved(monkeypatch):
+    """When Chromium is unresolved and the worker fails, render returns None (no raise)."""
+    # _PLAYWRIGHT_CHROME None → no explicit binary passed; worker then fails.
     monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", None)
+    monkeypatch.setattr(md_mod.subprocess, "run", _fake_failing_worker)
 
     result = render_pdf_chromium("<h1>x</h1>")
 
@@ -214,8 +232,9 @@ def test_render_pdf_chromium_returns_none_when_unresolved(monkeypatch, tmp_path)
 
 
 def test_render_pdf_chromium_returns_none_when_path_missing(monkeypatch, tmp_path):
-    """When _PLAYWRIGHT_CHROME points to a non-existent file, returns None (not an exception)."""
+    """When the Chromium path is missing and the worker fails, returns None (not an exception)."""
     monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", tmp_path / "this-does-not-exist")
+    monkeypatch.setattr(md_mod.subprocess, "run", _fake_failing_worker)
 
     result = render_pdf_chromium("<h1>x</h1>")
 

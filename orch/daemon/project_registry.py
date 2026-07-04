@@ -268,6 +268,12 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     else:
         iw_config.pop("ai_assistant", None)
 
+    parsed_mcp_policy = _parse_mcp_policy_block(project_id, entry.get("mcp_policy"))
+    if parsed_mcp_policy is not None:
+        iw_config["mcp_policy"] = parsed_mcp_policy
+    else:
+        iw_config.pop("mcp_policy", None)
+
     scope_gate_enabled: bool = bool(iw_config.get("scope_gate_enabled", False))
 
     # overlap_gate policy — parsed from .iw-orch.json (not projects.toml).
@@ -759,6 +765,79 @@ def _parse_ai_assistant_block(project_id: str, raw: object) -> dict[str, Any] | 
         )
 
     return parsed
+
+
+# ---------------------------------------------------------------------------
+# Valid values for mcp_policy entries
+# ---------------------------------------------------------------------------
+
+#: Accepted decision strings in ``[projects.X.mcp_policy]``.
+_VALID_MCP_DECISIONS: frozenset[str] = frozenset({"allow", "ask", "deny"})
+
+#: Accepted tier shorthand keys in addition to tool names and "default".
+_VALID_MCP_TIER_KEYS: frozenset[str] = frozenset({"tier1", "tier2", "tier3"})
+
+
+def _parse_mcp_policy_block(project_id: str, raw: object) -> dict[str, str] | None:
+    """Validate and normalise the optional ``mcp_policy`` config block from projects.toml.
+
+    Accepts a flat TOML dict whose keys are either a known MCP tool name, a
+    tier shorthand (``"tier1"``, ``"tier2"``, ``"tier3"``), or ``"default"``,
+    and whose values are one of ``"allow"``, ``"ask"``, ``"deny"``.
+
+    Invalid entries (unknown decision strings) are dropped with a logged
+    warning; the remaining valid entries are returned.  If the raw block is
+    absent (``None``) or not a dict, ``None`` is returned so the caller can
+    pop the key from the project config.
+
+    Args:
+        project_id: Project identifier used in warning messages.
+        raw: The raw value at ``[projects.<id>.mcp_policy]`` in projects.toml.
+
+    Returns:
+        A dict of ``{key: decision_string}`` for valid entries, or ``None``
+        when the block is absent or contains no valid entries.
+    """
+    if raw is None:
+        return None
+
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Project %r mcp_policy block is not a dict — ignoring",
+            project_id,
+        )
+        return None
+
+    # Import tool list lazily to avoid circular import at module load time.
+    from orch.mcp.policy import TOOL_TIERS  # noqa: PLC0415
+
+    valid_keys: set[str] = set(TOOL_TIERS) | _VALID_MCP_TIER_KEYS | {"default"}
+
+    cleaned: dict[str, str] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or value.strip().lower() not in _VALID_MCP_DECISIONS:
+            logger.warning(
+                "Project %r mcp_policy entry %r has invalid decision %r "
+                "(expected one of %s) — ignoring",
+                project_id,
+                key,
+                value,
+                sorted(_VALID_MCP_DECISIONS),
+            )
+            continue
+        # Keys that are not a known tool, tier key, or "default" are still
+        # accepted (the policy engine will ignore unknown keys gracefully),
+        # but we log a warning so operators notice typos.
+        if key not in valid_keys:
+            logger.warning(
+                "Project %r mcp_policy key %r is not a known tool name, tier key, "
+                "or 'default' — keeping it but it will have no effect",
+                project_id,
+                key,
+            )
+        cleaned[key] = value.strip().lower()
+
+    return cleaned if cleaned else None
 
 
 def load_projects_toml(path: Path) -> dict[str, ProjectConfig]:

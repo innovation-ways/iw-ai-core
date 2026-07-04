@@ -15,6 +15,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Doc generation & versioning | `orch/doc_service.py` · `orch/doc_sections.py` · `orch/doc_diff.py` |
 | Test/Quality run engine | `orch/test_runner.py` · launched from `dashboard/routers/tests.py` & `quality.py` |
 | Unified jobs view | `orch/jobs/aggregator.py` · `dashboard/routers/jobs_ui.py` |
+| MCP agent-control server (R-00165) | `orch/mcp/` over `orch/services/` · `docs/IW_AI_Core_MCP_Server.md` · Hermes skill `docs/hermes/iw-ai-core/SKILL.md` |
 | DB instance identity (CR-00014) | `orch/db/identity.py` · `dashboard/routers/healthz.py` |
 | Worktree container isolation | `orch/daemon/worktree_compose.py` · `orch/daemon/worktree_reaper.py` · `docs/IW_AI_Core_Worktree_Isolation.md` |
 | Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` · `docs/IW_AI_Core_Testing_Strategy.md` · `skills/iw-ai-core-testing/SKILL.md` |

@@ -741,3 +741,36 @@ def batch_cancel(ctx: click.Context, batch_id: str, reset_items: bool, reason: s
             click.echo(f"  Killed PIDs: {', '.join(str(p) for p in result_payload['killed_pids'])}")
         for err in result_payload.get("teardown_errors", []):
             click.echo(f"  Warning: {err}")
+
+
+# ---------------------------------------------------------------------------
+# batch-list — NEW list/query command
+# ---------------------------------------------------------------------------
+
+
+@click.command("batch-list")
+@click.option("--status", default=None, help="Filter by status (e.g. planning, approved)")
+@click.pass_context
+def batch_list(ctx: click.Context, status: str | None) -> None:
+    """List batches for the current project."""
+    from orch.services.batches import list_batches  # noqa: PLC0415
+
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            result = list_batches(session, project_id, status=status)
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps(result))
+    else:
+        batches = result["batches"]
+        click.echo(f"Batches ({len(batches)}):")
+        for b in batches:
+            click.echo(
+                f"  {b['batch_id']}  [{b['status']}]  "
+                f"{b['completed_count']}/{b['item_count']} items"
+            )

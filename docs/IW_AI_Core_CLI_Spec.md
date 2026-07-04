@@ -923,6 +923,159 @@ iw test-health-capture --project <slug>
 
 ---
 
+### 3.11. MCP Server and Approval Management
+
+The `iw mcp` group exposes operator controls for the IW AI Core MCP server
+(R-00165): launching the server, approving or denying gated tool calls, listing
+pending approval requests, and managing per-project per-tool policy overrides.
+
+#### `iw mcp serve`
+
+Launch the IW AI Core MCP server over stdio (blocking — runs until the client disconnects).
+
+```
+iw mcp serve
+```
+
+No flags. The server uses the standard `iw_cli_orch_bridge` live-DB guard. This
+command is the backing entry point for the `iw-mcp` console-script alias.
+
+**Exit codes:** never returns normally (the server runs until the transport closes).
+
+---
+
+#### `iw mcp approve`
+
+Approve a pending MCP approval request, allowing the gated tool call to proceed.
+
+```
+iw mcp approve <token> [--by <operator>]
+```
+
+**Positional args:**
+
+| Arg | Description |
+|-----|-------------|
+| `<token>` | Opaque approval token from the approval-required envelope. |
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--by` | Operator identifier stored in `decided_by`. Defaults to the OS username. |
+
+**Output (human):** `Approved: <token> (by <operator>)`
+
+**Output (JSON):** `{"token": "…", "status": "approved", "decided_by": "…"}`
+
+**Exit codes:** `0` = approved, `1` = token not found or not pending.
+
+---
+
+#### `iw mcp deny`
+
+Deny a pending MCP approval request.
+
+```
+iw mcp deny <token> [--by <operator>]
+```
+
+**Positional args:**
+
+| Arg | Description |
+|-----|-------------|
+| `<token>` | Opaque approval token from the approval-required envelope. |
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--by` | Operator identifier stored in `decided_by`. Defaults to the OS username. |
+
+**Output (human):** `Denied: <token> (by <operator>)`
+
+**Output (JSON):** `{"token": "…", "status": "denied", "decided_by": "…"}`
+
+**Exit codes:** `0` = denied, `1` = token not found or not pending.
+
+---
+
+#### `iw mcp approvals`
+
+List MCP approval requests in reverse-chronological order.
+
+```
+iw mcp approvals [--status <status>]
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--status` | Filter by status: `pending`, `approved`, `denied`, `consumed`, `expired`. |
+
+**Output (JSON):**
+```json
+{"approvals": [{"token": "…", "tool_name": "batch_cancel", "project_id": "…", "status": "pending", "created_at": "…", "expires_at": "…", "decided_by": null}]}
+```
+
+**Exit codes:** `0` = success (empty list is not an error).
+
+---
+
+#### `iw mcp policy set`
+
+Upsert a per-project per-tool MCP policy override in the database.  This is the
+highest-priority policy layer and overrides both `projects.toml` and built-in
+tier defaults.
+
+```
+iw mcp policy set <project_id> <tool_name> <decision> [--by <operator>]
+```
+
+**Positional args:**
+
+| Arg | Description |
+|-----|-------------|
+| `<project_id>` | Project the override applies to. |
+| `<tool_name>` | Known MCP tool name (see `orch.mcp.policy.TOOL_TIERS`). |
+| `<decision>` | One of `allow`, `ask`, `deny`. |
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--by` | Operator identifier stored in `updated_by`. Defaults to OS username. |
+
+**Output (JSON):** `{"project_id": "…", "tool_name": "…", "decision": "…", "updated_by": "…"}`
+
+**Exit codes:** `0` = upserted, `2` = unknown `tool_name`.
+
+---
+
+#### `iw mcp policy list`
+
+List MCP policy overrides from the database, optionally filtered by project.
+
+```
+iw mcp policy list [<project_id>]
+```
+
+**Positional args:**
+
+| Arg | Description |
+|-----|-------------|
+| `<project_id>` | Optional filter. When omitted all projects are shown. |
+
+**Output (JSON):**
+```json
+{"policies": [{"project_id": "…", "tool_name": "…", "decision": "…", "updated_by": "…", "updated_at": "…"}]}
+```
+
+**Exit codes:** `0` = success (empty list is not an error).
+
+---
+
 ## 4. Command Summary
 
 This tree is the **canonical command list**. It is kept in sync with the actual
@@ -939,6 +1092,7 @@ iw
 ├── unapprove           Revert an approved work item back to draft (approved → draft)
 ├── item-cancel         Cancel a single work item not owned by an active batch
 ├── item-status         Show the current status of a work item
+├── items-list          List work items filtered by status/type/phase (paginated)
 ├── item-report         Generate and write the execution report for a work item
 ├── archive             Archive completed work items (Tier 1 DB + Tier 2 .tar.zst)
 ├── step-start          Mark a workflow step as started (pending → in_progress)
@@ -951,6 +1105,7 @@ iw
 ├── batch-create        Create a new batch from a list of approved work items
 ├── batch-approve       Approve a batch for execution (planning → approved)
 ├── batch-status        Show the current status of a batch
+├── batch-list          List batches filtered by status
 ├── batch-pause         Pause a running batch (executing → paused)
 ├── batch-resume        Resume a paused batch (paused → executing)
 ├── batch-cancel        Cancel a batch and its non-terminal items
@@ -991,6 +1146,14 @@ iw
 │   ├── status          Show the latest OSS scan status for a project
 │   ├── install         Probe or install Tier-1 OSS compliance tools
 │   └── fix             Preview or apply the auto-fix for a single OSS check
+├── mcp                 MCP server and approval management commands
+│   ├── serve           Launch the IW AI Core MCP server over stdio
+│   ├── approve         Approve a pending MCP approval request
+│   ├── deny            Deny a pending MCP approval request
+│   ├── approvals       List MCP approval requests
+│   └── policy          Manage per-project per-tool MCP policy overrides
+│       ├── set         Upsert a per-project per-tool policy override
+│       └── list        List per-project per-tool policy overrides
 ├── daemon              Control the IW AI Core orchestration daemon
 │   ├── start           Start the orchestration daemon
 │   ├── stop            Stop the running daemon gracefully
