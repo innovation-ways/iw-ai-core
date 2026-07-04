@@ -28,39 +28,46 @@ def workflow_guide() -> str:
 
 IW AI Core is an AI orchestration platform.  All engineering work is modelled
 as **work items** that flow through a governed lifecycle executed by the daemon.
+You can drive the **entire** lifecycle — author, approve, batch, monitor,
+recover — through the MCP tools listed below.  You do not need to shell out to
+the `iw` CLI for any of it.
 
-## Lifecycle
+## Lifecycle (which tool to call, in order)
 
 1. **Author the design doc** — use the project's IW skills (e.g. `/iw-new-feature`,
-   `/iw-new-incident`, `/iw-new-cr`) directly in the agent's context.  These skills
-   create the design doc, allocate the item ID (e.g. `F-00123`), and register the
-   item in the DB (status → `draft`).
+   `/iw-new-incident`, `/iw-new-cr`) directly in your own context.  These skills
+   produce the design doc + workflow manifest.  Then register it:
 
-2. **Register the item** — the skills call `iw register` which persists the
-   design doc and workflow steps to the DB.
+2. **Register the item** — `work_item_register` (writes the item to the DB,
+   status → `draft`).  Pass the design doc via `design_doc_path` /
+   `design_doc_content` and steps via `manifest_path` / `manifest_steps`.
+   Use `dry_run=True` first to preview without writing.  If you need a fresh ID,
+   call `work_item_next_id` (allocates e.g. `CR-00042`).
 
-3. **Approve the item** — after reviewing the design, call `iw approve <item-id>`.
-   Status transitions: `draft` → `approved`.  The daemon will pick it up on the
-   next poll cycle.
+3. **Approve the item** — `work_item_approve`.  Status: `draft` → `approved`.
 
-4. **Create a batch** — group one or more approved items together:
-   `iw batch-create --items F-00123 ...`.  Status → `planning`.
+4. **Create a batch** — `batch_create` with the list of approved `item_ids`.
+   Status → `planning`.  Use `dry_run=True` to preview the execution-group plan.
 
-5. **Approve the batch** — `iw batch-approve <batch-id>`.  Status → `approved`.
-   The daemon picks up approved batches and begins launching worktrees.
+5. **Approve the batch** — `batch_approve`.  Status → `approved`.  The daemon
+   picks it up on its next poll (default every 60 s) and launches worktrees.
 
-6. **Poll batch status** — use the `batch_status` MCP tool to monitor progress.
-   Batch status transitions: `approved` → `executing` → `completed` (or
-   `completed_with_errors` if any item failed).
+6. **Poll batch status** — `batch_status`.  Transitions: `approved` →
+   `executing` → `completed` (or `completed_with_errors` if any item failed).
+   `job_list` and `worktree_status` give complementary background views.
 
-7. **Poll individual items** — use `work_item_get` to inspect step-level
-   progress within a running item.
+7. **Poll individual items** — `work_item_get` for step-level progress.
 
-8. **Resolve errors** — if items stall or fail, use `iw item-retry` (CLI) to
-   re-drive recovery.  The daemon resumes from the first non-completed step.
+8. **Resolve errors** — the daemon runs its own fix-cycles automatically.  If an
+   item still dead-ends (`failed`/`stalled`), call `item_retry` to re-drive it
+   from the first non-completed step.  Pause/resume a running batch with
+   `batch_control`.
 
-9. **Archive** — after a merged item is confirmed correct, `iw archive <item-id>`
-   moves it to the archive tier.
+9. **Confirm the merge** — the daemon squash-merges automatically.  If a merge
+   gate is configured, release it with `approve_merge`.
+
+10. **Archive** — after a merged item is confirmed correct, `work_item_archive`
+    moves it to the archive tier.
 
 ## Key identifiers
 
@@ -68,7 +75,7 @@ as **work items** that flow through a governed lifecycle executed by the daemon.
 - **item_id**: Prefixed sequential ID (`F-NNNNN`, `I-NNNNN`, `CR-NNNNN`, `R-NNNNN`).
 - **batch_id**: `BATCH-NNNNN`.
 
-## Read-only tools available
+## Read-only tools (always available)
 
 | Tool | Purpose |
 |------|---------|
@@ -81,9 +88,36 @@ as **work items** that flow through a governed lifecycle executed by the daemon.
 | `worktree_status` | Active agent worktrees |
 | `daemon_status` | Daemon liveness + operational stats |
 
-All tools are read-only (`readOnlyHint=true`).  Authoring design docs and
-issuing approve/batch-create commands is done via the agent's own IW skills
-and the `iw` CLI — not via MCP tools.
+## Write tools (present only when the server has writes enabled)
+
+Write tools register only when the server is launched with
+`IW_CORE_MCP_ENABLE_WRITE_TOOLS=true`.  If you don't see them, the operator has
+kept the server read-only.  Each tool carries a **blast-radius tier** that sets
+its default approval policy:
+
+| Tier | Default | Tools |
+|------|---------|-------|
+| 1 | allow | `work_item_next_id`, `work_item_register` |
+| 2 | ask | `work_item_approve`, `batch_create`, `batch_approve`, `batch_control`, `item_retry` |
+| 3 | deny | `approve_merge`, `batch_cancel`, `work_item_archive`, `work_item_cancel` |
+
+Defaults can be overridden per project + per tool by the operator
+(`iw mcp policy set <project> <tool> allow|ask|deny`), so the effective decision
+you get may differ from the table above.
+
+## Approval handshake (for `ask` / gated tools)
+
+When a tool's effective policy is **ask**, calling it without an
+`approval_token` returns an `approval_required` envelope containing a `token`
+instead of executing.  To proceed:
+
+1. A human runs `iw mcp approve <token>` (or `iw mcp deny <token>`).
+2. You **retry the same tool call** with `approval_token` set to that token.
+
+When the policy is **allow**, the tool executes immediately with no token.
+When it is **deny**, the call is refused and no token can release it.
+Tier-2/3 tools also accept `dry_run=True` (where applicable) so you can preview
+side-effects before requesting approval.
 """
 
 
