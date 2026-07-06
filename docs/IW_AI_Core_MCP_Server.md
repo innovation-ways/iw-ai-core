@@ -24,12 +24,49 @@ Why MCP rather than "just the CLI"? For a local agent the CLI is efficient, but 
 
 ## 2. Running the server
 
-The server speaks **stdio** (the client launches it as a subprocess) — the right transport for same-host use. Two equivalent entry points:
+The server supports two **transports**:
+
+- **stdio** (default) — the MCP client launches the server as a child process and talks over stdin/stdout. Server and client are co-located; good for a same-host CLI-style client that can run the code itself.
+- **http** — the server runs as a long-lived, independent network service; clients connect to `http://<host>:<port>/mcp/`. Use this to run **one** server on the host next to the daemon while remote clients — a laptop, or an agent inside a container — connect over the network with **no filesystem access and no copy of the code**.
 
 ```bash
-iw-mcp            # console-script entry point (pyproject [project.scripts])
-iw mcp serve      # same thing, as an iw subcommand
+iw-mcp                                          # stdio (default)
+iw mcp serve                                    # same, as an iw subcommand
+iw mcp serve --http --host 0.0.0.0 --port 9901  # independent HTTP service (LAN-reachable)
+IW_CORE_MCP_TRANSPORT=http iw-mcp               # HTTP via env (IW_CORE_MCP_HTTP_HOST/PORT)
 ```
+
+> **Why HTTP fixes the "which machine owns the files" confusion.** With stdio, the client *spawns* the server, so the server always runs in the client's environment (its container/host, its copy of the repo). That is why a containerised client ended up running a drifting copy and why a PID-file liveness check spanned a namespace it could never see. With HTTP the server runs **once on the host**; clients are pure protocol consumers and never touch the repo, `.env`, or PID files. A laptop client "just works" with a URL and needs zero access to the host filesystem.
+
+### HTTP transport — networking notes
+
+- **Firewall.** The HTTP port is a *host-native* port. If the host runs **ufw**, allow it explicitly — unlike Docker-**published** ports (e.g. the DB on 5433), host processes are **not** auto-exempted from ufw:
+  ```bash
+  sudo ufw allow 9901/tcp                 # open to LAN + local Docker subnets
+  ```
+- **Container clients.** An agent in a Docker container reaches the host service at the **host's LAN IP** (the same address it already uses for the DB, e.g. `http://192.168.0.104:9901/mcp/`) once the port is open in ufw. `host.docker.internal` requires `--add-host host.docker.internal:host-gateway` at container creation and is not assumed here.
+- **Auth.** The HTTP server is currently unauthenticated (same posture as same-host stdio). On an untrusted network, put it behind a reverse proxy with a bearer token or mTLS; the write tools are additionally gated by the policy engine, but that is defence-in-depth, not a substitute for network controls.
+
+### Hermes as an HTTP client (no local server, no code copy)
+
+Replace the stdio `command`/`args` entry with a `url`. Exact key names depend on your Hermes version — consult its MCP client docs — but the shape is:
+
+```yaml
+mcp_servers:
+  iwcore:
+    transport: http                              # or: type: streamable-http
+    url: "http://192.168.0.104:9901/mcp/"        # host LAN IP + /mcp/ (trailing slash)
+    enabled: true
+    timeout: 300
+    tools:
+      include: [ project_list, work_item_list, work_item_get, batch_list,
+                 batch_status, job_list, worktree_status, daemon_status, workflow_guide,
+                 work_item_next_id, work_item_register, work_item_approve, batch_create,
+                 batch_approve, batch_control, item_retry ]
+      exclude: []
+```
+
+With this, the container's `/opt/data/iw-ai-core` copy is no longer used by Hermes at all — the drift problem disappears.
 
 It connects to the orchestration DB using the standard `orch.config` settings (read from `.env`), under the same `iw_cli_orch_bridge` the CLI uses, so the live-DB guard permits it. The app DB role (`iw_orch`) is intentionally **non-superuser** — keep it that way; it is the authoritative least-privilege backstop.
 
