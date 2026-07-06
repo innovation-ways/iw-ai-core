@@ -440,3 +440,54 @@ class TestDaemonStatus:
         result = daemon_status()
         assert result["status"] == "stopped"
         assert result["pid"] is None
+        assert result["liveness_source"] is None
+
+    def test_daemon_status_running_via_heartbeat_without_pid(
+        self, db_session: Any, test_project: Project, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fresh DB poll heartbeat reports 'running' even with no resolvable PID file."""
+        import tempfile
+        from datetime import UTC, datetime
+        from pathlib import Path
+
+        from orch.db.models import DaemonEvent
+
+        # No local PID (simulates the MCP server in a different namespace/host).
+        monkeypatch.setenv("IW_CORE_PID_FILE", str(Path(tempfile.mkdtemp()) / "no.pid"))
+        db_session.add(DaemonEvent(event_type="daemon_poll", created_at=datetime.now(UTC)))
+        db_session.flush()
+
+        from orch.mcp.tools.read_tools import daemon_status
+
+        result = daemon_status()
+        assert result["status"] == "running"
+        assert result["liveness_source"] == "heartbeat"
+        assert result["pid"] is None
+        assert result["last_poll_age_seconds"] is not None
+        assert result["last_poll_age_seconds"] < 180
+
+    def test_daemon_status_stopped_when_heartbeat_stale(
+        self, db_session: Any, test_project: Project, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale poll heartbeat (older than the window) with no PID reports 'stopped'."""
+        import tempfile
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+
+        from orch.db.models import DaemonEvent
+
+        monkeypatch.setenv("IW_CORE_PID_FILE", str(Path(tempfile.mkdtemp()) / "no.pid"))
+        db_session.add(
+            DaemonEvent(
+                event_type="daemon_poll",
+                created_at=datetime.now(UTC) - timedelta(seconds=100_000),
+            )
+        )
+        db_session.flush()
+
+        from orch.mcp.tools.read_tools import daemon_status
+
+        result = daemon_status()
+        assert result["status"] == "stopped"
+        assert result["liveness_source"] is None
+        assert result["last_poll_age_seconds"] >= 100_000

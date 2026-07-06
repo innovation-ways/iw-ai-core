@@ -13,7 +13,63 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from fastmcp import FastMCP
+
+
+#: Default daemon poll interval (seconds) when IW_CORE_POLL_INTERVAL is unset.
+_DEFAULT_POLL_INTERVAL_SECONDS = 60
+
+#: Minimum heartbeat-freshness window regardless of a very short poll interval.
+_MIN_HEARTBEAT_WINDOW_SECONDS = 180
+
+
+def _heartbeat_window_seconds() -> float:
+    """Return the max age a daemon poll may have and still count as 'alive'.
+
+    Uses three poll intervals (read from ``IW_CORE_POLL_INTERVAL``) as the grace
+    window, floored at :data:`_MIN_HEARTBEAT_WINDOW_SECONDS` so a misconfigured
+    tiny interval never makes the daemon look perpetually dead.
+
+    Returns:
+        The heartbeat-freshness window in seconds.
+    """
+    import os  # noqa: PLC0415
+
+    raw = os.environ.get("IW_CORE_POLL_INTERVAL", "")
+    try:
+        interval = int(raw.strip())
+        if interval <= 0:
+            interval = _DEFAULT_POLL_INTERVAL_SECONDS
+    except (ValueError, AttributeError):
+        interval = _DEFAULT_POLL_INTERVAL_SECONDS
+    return float(max(interval * 3, _MIN_HEARTBEAT_WINDOW_SECONDS))
+
+
+def _heartbeat_age_seconds(last_poll_at_iso: str | None, now: datetime) -> float | None:
+    """Return the age in seconds of the last daemon poll, or None if unknown.
+
+    Args:
+        last_poll_at_iso: ISO-8601 timestamp of the last poll, or ``None``.
+        now: Current timezone-aware time to measure age against.
+
+    Returns:
+        Age in seconds (never negative), or ``None`` when there is no parseable
+        last-poll timestamp.
+    """
+    from datetime import UTC  # noqa: PLC0415
+    from datetime import datetime as _dt
+
+    if not last_poll_at_iso:
+        return None
+    try:
+        parsed = _dt.fromisoformat(last_poll_at_iso)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return max(0.0, (now - parsed).total_seconds())
 
 
 # ---------------------------------------------------------------------------
@@ -342,16 +398,33 @@ def worktree_status(project_id: str) -> dict[str, Any]:
 def daemon_status() -> dict[str, Any]:
     """Get daemon liveness and operational statistics.
 
-    Combines OS-level PID-file liveness (is the daemon process alive?) with
-    database statistics (last poll time, running steps, active batches,
-    project counts).  Use this to confirm the daemon is healthy and to
-    understand current system load before submitting new work.
+    Liveness is judged **primarily by the database poll heartbeat** — the daemon
+    is considered ``running`` when its most recent poll is fresher than three
+    poll intervals (see ``IW_CORE_POLL_INTERVAL``).  The heartbeat is the only
+    signal that works when this MCP server runs in a **different process
+    namespace or filesystem than the daemon** (e.g. the server inside a
+    container while the daemon runs on the host): a local PID file is not shared
+    across that boundary, and PIDs are not comparable across PID namespaces.
+
+    An OS-level PID check is used as a supplementary signal when it *is*
+    resolvable locally — it can confirm ``running`` even if the heartbeat is
+    momentarily stale, and it supplies the ``pid``.  When the PID file is absent
+    or its PID belongs to another namespace, ``pid`` is ``None`` and liveness
+    falls back to the heartbeat.
+
+    Use this to confirm the daemon is healthy and to understand current system
+    load before submitting new work.
 
     Returns:
         Dict with:
 
         - ``status``: ``"running"`` or ``"stopped"``.
-        - ``pid``: Integer OS process ID when running, ``None`` when stopped.
+        - ``pid``: Integer OS process ID when locally resolvable and alive,
+          else ``None`` (``None`` does NOT imply the daemon is down — check
+          ``status`` and ``liveness_source``).
+        - ``liveness_source``: ``"pid"``, ``"heartbeat"``, or ``None`` — which
+          signal established ``running`` (``None`` when ``stopped``).
+        - ``last_poll_age_seconds``: Seconds since the last poll, or ``None``.
         - ``last_poll_at``: ISO-8601 timestamp of the last daemon poll, or
           ``None`` if the daemon has never polled.
         - ``poll_count``: Total number of daemon polls recorded in the DB.
@@ -361,6 +434,8 @@ def daemon_status() -> dict[str, Any]:
         - ``projects``: Dict ``{"enabled": int, "disabled": int}`` with project
           counts broken down by enabled status.
     """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
     from fastmcp.exceptions import ToolError  # noqa: PLC0415
 
     from orch.cli.daemon_commands import (  # noqa: PLC0415
@@ -373,16 +448,36 @@ def daemon_status() -> dict[str, Any]:
     from orch.services.monitoring import get_daemon_db_stats  # noqa: PLC0415
 
     try:
-        pid_file = get_pid_file_path()
-        pid = read_pid(pid_file)
-        is_running = pid is not None and is_process_alive(pid)
-
         with session_scope() as session:
             db_stats = get_daemon_db_stats(session)
 
+        # Primary signal: DB poll heartbeat (namespace/filesystem independent).
+        now = datetime.now(UTC)
+        age = _heartbeat_age_seconds(db_stats.get("last_poll_at"), now)
+        heartbeat_fresh = age is not None and age <= _heartbeat_window_seconds()
+
+        # Supplementary signal: local PID liveness (best-effort; may be
+        # unresolvable when the daemon runs in another namespace/filesystem).
+        pid: int | None = None
+        pid_alive = False
+        try:
+            pid = read_pid(get_pid_file_path())
+            pid_alive = pid is not None and is_process_alive(pid)
+        except OSError:
+            pid, pid_alive = None, False
+
+        if pid_alive:
+            liveness_source: str | None = "pid"
+        elif heartbeat_fresh:
+            liveness_source = "heartbeat"
+        else:
+            liveness_source = None
+
         return {
-            "status": "running" if is_running else "stopped",
-            "pid": pid if is_running else None,
+            "status": "running" if liveness_source is not None else "stopped",
+            "pid": pid if pid_alive else None,
+            "liveness_source": liveness_source,
+            "last_poll_age_seconds": round(age) if age is not None else None,
             **db_stats,
         }
     except ServiceError as e:
