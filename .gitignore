@@ -19,6 +19,7 @@ dist/
 logs/
 .daemon.pid
 .dashboard.pid
+.mcp.pid
 
 # Tool caches
 .mypy_cache/
