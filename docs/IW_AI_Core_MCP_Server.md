@@ -47,6 +47,19 @@ IW_CORE_MCP_TRANSPORT=http iw-mcp               # HTTP via env (IW_CORE_MCP_HTTP
 - **Container clients.** An agent in a Docker container reaches the host service at the **host's LAN IP** (the same address it already uses for the DB, e.g. `http://192.168.0.104:9901/mcp/`) once the port is open in ufw. `host.docker.internal` requires `--add-host host.docker.internal:host-gateway` at container creation and is not assumed here.
 - **Auth.** The HTTP server is currently unauthenticated (same posture as same-host stdio). On an untrusted network, put it behind a reverse proxy with a bearer token or mTLS; the write tools are additionally gated by the policy engine, but that is defence-in-depth, not a substitute for network controls.
 
+### Running it as a service
+
+- **Dev / manual:** `./ai-core.sh mcp {start|stop|restart|status|logs}` — a nohup-managed process (survives your shell, **not** a reboot). It also comes up as part of `./ai-core.sh start`.
+- **Reboot-persistent:** install the systemd unit at [`deploy/systemd/iw-mcp.service`](../deploy/systemd/iw-mcp.service):
+  ```bash
+  ./ai-core.sh mcp stop                       # free port 9901 for systemd
+  sudo cp deploy/systemd/iw-mcp.service /etc/systemd/system/iw-mcp.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now iw-mcp          # start now + on every boot
+  systemctl status iw-mcp                      # verify;  journalctl -u iw-mcp -f  for logs
+  ```
+  With systemd owning port 9901, `./ai-core.sh mcp start` becomes a no-op (its foreign-port guard reports the port in use) — control the service via `systemctl` from then on.
+
 ### Hermes as an HTTP client (no local server, no code copy)
 
 Replace the stdio `command`/`args` entry with a `url`. Exact key names depend on your Hermes version — consult its MCP client docs — but the shape is:

@@ -1,0 +1,49 @@
+# IW AI Core — MCP HTTP server (agent-control surface).
+#
+# Runs `iw mcp serve --http` as an independent, reboot-persistent host service so
+# remote MCP clients (a laptop, an agent inside a container) connect over the
+# network at http://<host>:9901/mcp/ with no filesystem access.
+#
+# Install (needs root):
+#   sudo cp deploy/systemd/iw-mcp.service /etc/systemd/system/iw-mcp.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now iw-mcp
+#
+# Control:      systemctl {status|restart|stop} iw-mcp
+# Logs:         journalctl -u iw-mcp -f
+#
+# NOTE: stop the ai-core.sh-managed instance first (`./ai-core.sh mcp stop`) so
+# systemd can bind port 9901. With systemd owning the port, `./ai-core.sh mcp
+# start` becomes a no-op (its foreign-port guard reports the port in use) — use
+# systemctl to control the service from then on.
+
+[Unit]
+Description=IW AI Core MCP HTTP server (agent-control surface)
+Documentation=file:///home/sergiog/dev/iw-doc-plan/main/iw-ai-core/docs/IW_AI_Core_MCP_Server.md
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=sergiog
+Group=sergiog
+WorkingDirectory=/home/sergiog/dev/iw-doc-plan/main/iw-ai-core
+
+# uv needs a stable HOME (for its cache/venv resolution) and PATH under the
+# minimal systemd environment.
+Environment=HOME=/home/sergiog
+Environment=PATH=/home/sergiog/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+# Agent-control surface: write tools ON by default. Set to "false" here for a
+# strictly read-only server. DB creds and other settings come from the repo .env.
+Environment=IW_CORE_MCP_ENABLE_WRITE_TOOLS=true
+
+ExecStart=/home/sergiog/.local/bin/uv run iw mcp serve --http --host 0.0.0.0 --port 9901
+
+# Keep the agent-control surface up; restart on crash and after a transient DB
+# outage (tool calls fail until the DB is back, but the port stays bound).
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
