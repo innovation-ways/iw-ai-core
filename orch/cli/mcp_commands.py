@@ -38,16 +38,45 @@ def mcp_group() -> None:
 
 
 @mcp_group.command("serve")
-def serve() -> None:
-    """Launch the IW AI Core MCP server over stdio (blocks until the client disconnects).
+@click.option(
+    "--http",
+    "use_http",
+    is_flag=True,
+    default=False,
+    help="Serve over HTTP as an independent network service instead of stdio.",
+)
+@click.option(
+    "--host",
+    default=None,
+    help="HTTP bind host (default 127.0.0.1, or IW_CORE_MCP_HTTP_HOST). "
+    "Use 0.0.0.0 to accept LAN clients.",
+)
+@click.option(
+    "--port",
+    default=None,
+    type=int,
+    help="HTTP bind port (default 9901, or IW_CORE_MCP_HTTP_PORT).",
+)
+def serve(use_http: bool, host: str | None, port: int | None) -> None:
+    """Launch the IW AI Core MCP server (blocks until stopped/disconnected).
 
-    This command starts the FastMCP server in stdio transport mode so that MCP
-    clients (e.g. Claude Desktop) can connect to it.  It does not require a
-    database session — the server opens its own session for each tool call.
+    Default transport is **stdio**: the MCP client launches this process and
+    talks over stdin/stdout (server co-located with client).  With ``--http``,
+    the server runs as a long-lived network service and clients connect to
+    ``http://<host>:<port>/mcp/`` over the network — one server on the host,
+    remote clients with no filesystem access.
+
+    It does not require a database session — the server opens its own session
+    for each tool call.
+
+    Args:
+        use_http: When True, serve over HTTP instead of stdio.
+        host: HTTP bind host override, or None to use env/default.
+        port: HTTP bind port override, or None to use env/default.
     """
     from orch.mcp.server import main  # noqa: PLC0415
 
-    main()
+    main(transport="http" if use_http else "stdio", host=host, port=port)
 
 
 # ---------------------------------------------------------------------------
