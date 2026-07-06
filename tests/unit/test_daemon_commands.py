@@ -73,6 +73,18 @@ def test_get_pid_file_path_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_pid_file_path() == Path("/tmp/iw-orch-daemon.pid")  # noqa: S108
 
 
+def test_get_pid_file_path_relative_resolves_against_core_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A relative IW_CORE_PID_FILE resolves against CORE_ROOT, not the CWD (split-brain guard)."""
+    import orch.config  # noqa: PLC0415
+
+    monkeypatch.setenv("IW_CORE_PID_FILE", ".daemon.pid")
+    result = get_pid_file_path()
+    assert result == orch.config.CORE_ROOT / ".daemon.pid"
+    assert result.is_absolute()
+
+
 # ---------------------------------------------------------------------------
 # daemon start — detects existing process
 # ---------------------------------------------------------------------------

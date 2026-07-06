@@ -31,10 +31,27 @@ _ACTIVE_BATCH_STATUSES: list[BatchStatus] = [
 
 
 def get_pid_file_path() -> Path:
-    """Return the daemon PID file path from IW_CORE_PID_FILE or a default."""
+    """Return the daemon PID file path from IW_CORE_PID_FILE or a default.
+
+    A **relative** ``IW_CORE_PID_FILE`` is resolved against the IW AI Core repo
+    root (``orch.config.CORE_ROOT``), NOT the current working directory, so the
+    daemon, the ``iw`` CLI, and the MCP server all agree on one absolute path
+    regardless of where each was launched. A CWD-relative default (``.daemon.pid``)
+    previously caused a split-brain: a daemon started with its CWD inside a
+    worktree wrote its PID file there, so ``./ai-core.sh`` (checking the repo
+    root) could not see it and started a second daemon, while the ``iw-mcp``
+    server — running from yet another CWD — reported the daemon as stopped.
+    (Diagnosed 2026-07-06.)
+
+    Returns:
+        Absolute path to the daemon PID file.
+    """
     pid_file = os.environ.get("IW_CORE_PID_FILE")
     if pid_file:
-        return Path(pid_file)
+        path = Path(pid_file)
+        if not path.is_absolute():
+            path = orch.config.CORE_ROOT / path
+        return path
     return Path("/tmp/iw-orch-daemon.pid")  # noqa: S108  # nosec B108
 
 
