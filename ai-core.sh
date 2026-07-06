@@ -662,9 +662,22 @@ cmd_mcp() {
       elif [[ -n "$pid" ]]; then
         print_err "MCP server: PID $pid in file but process is dead (stale PID file)"
       elif port_listening "$MCP_HTTP_PORT"; then
-        print_warn "MCP server: port $MCP_HTTP_PORT in use but no PID file"
+        print_warn "MCP server: port $MCP_HTTP_PORT in use but no PID file (systemd/external?)"
       else
         print_err "MCP server: not running"
+      fi
+      ;;
+    verify)
+      if ! port_listening "$MCP_HTTP_PORT"; then
+        print_err "MCP server: not listening on port $MCP_HTTP_PORT — start it first"
+        return 1
+      fi
+      print_info "Verifying MCP server via client handshake..."
+      if uv run python "$SCRIPT_DIR/scripts/mcp_verify.py" "http://127.0.0.1:${MCP_HTTP_PORT}/mcp/"; then
+        print_ok "MCP verify: OK (server reachable, daemon running)"
+      else
+        print_err "MCP verify: FAILED — check $MCP_LOG_FILE"
+        return 1
       fi
       ;;
     logs)
@@ -676,7 +689,7 @@ cmd_mcp() {
       fi
       ;;
     *)
-      echo "  Usage: $0 mcp {start|stop|restart|status|logs [lines]}"
+      echo "  Usage: $0 mcp {start|stop|restart|status|verify|logs [lines]}"
       ;;
   esac
 }
@@ -816,6 +829,7 @@ cmd_logs() {
   local files=()
   [[ -f "$DAEMON_LOG_FILE" ]]    && files+=("$DAEMON_LOG_FILE")
   [[ -f "$DASHBOARD_LOG_FILE" ]] && files+=("$DASHBOARD_LOG_FILE")
+  [[ -f "$MCP_LOG_FILE" ]]       && files+=("$MCP_LOG_FILE")
 
   if [[ ${#files[@]} -eq 0 ]]; then
     print_err "No log files found yet"
@@ -885,7 +899,15 @@ get_status_line() {
   shpid=$(read_pid "$DASHBOARD_PID_FILE")
   pid_alive "$shpid" && dash_ok=true
 
-  echo -e "  $(_svc_badge "db" "$db_ok")   $(_svc_badge "daemon" "$daemon_ok")   $(_svc_badge "dashboard" "$dash_ok")"
+  # MCP server — PID file (ai-core.sh) OR listening port (systemd/external)
+  local mcp_ok=false
+  local mpid
+  mpid=$(read_pid "$MCP_PID_FILE")
+  if pid_alive "$mpid" || port_listening "$MCP_HTTP_PORT"; then
+    mcp_ok=true
+  fi
+
+  echo -e "  $(_svc_badge "db" "$db_ok")   $(_svc_badge "daemon" "$daemon_ok")   $(_svc_badge "dashboard" "$dash_ok")   $(_svc_badge "mcp" "$mcp_ok")"
 }
 
 # =============================================================================
@@ -1001,14 +1023,54 @@ menu_dashboard() {
   done
 }
 
+menu_mcp() {
+  while true; do
+    print_header "MCP Server"
+    local pid
+    pid=$(read_pid "$MCP_PID_FILE")
+    if [[ -n "$pid" ]] && pid_alive "$pid"; then
+      echo -e "  Status: ${GREEN}▲ running${NC} (PID $pid) — http://${DB_HOST}:${MCP_HTTP_PORT}/mcp/"
+    elif port_listening "$MCP_HTTP_PORT"; then
+      echo -e "  Status: ${GREEN}▲ running${NC} (systemd/external) — http://${DB_HOST}:${MCP_HTTP_PORT}/mcp/"
+    else
+      echo -e "  Status: ${RED}▼ stopped${NC}"
+    fi
+    echo ""
+    echo -e "  ${CYAN}1)${NC} Start"
+    echo -e "  ${CYAN}2)${NC} Stop"
+    echo -e "  ${CYAN}3)${NC} Restart"
+    echo -e "  ${CYAN}4)${NC} Status"
+    echo -e "  ${CYAN}5)${NC} Verify  (MCP client handshake)"
+    echo -e "  ${CYAN}6)${NC} Last 50 log lines"
+    echo -e "  ${CYAN}7)${NC} Tail log (live)"
+    echo -e "  ${CYAN}0)${NC} Back"
+    echo ""
+    read -r -p "  Choice: " choice
+    case "$choice" in
+      1) cmd_mcp start ;;
+      2) cmd_mcp stop ;;
+      3) cmd_mcp restart ;;
+      4) cmd_mcp status ;;
+      5) cmd_mcp verify ;;
+      6) [[ -f "$MCP_LOG_FILE" ]] && tail -n 50 "$MCP_LOG_FILE" || print_warn "No log file" ;;
+      7) [[ -f "$MCP_LOG_FILE" ]] && tail -f "$MCP_LOG_FILE" || print_warn "No log file" ;;
+      0|"") return ;;
+      *) print_warn "Invalid choice" ;;
+    esac
+    echo ""
+    read -r -p "  Press Enter to continue..."
+  done
+}
+
 menu_logs() {
   while true; do
     print_header "Logs"
     echo -e "  ${CYAN}1)${NC} Tail all logs  (daemon + dashboard together)"
     echo -e "  ${CYAN}2)${NC} Tail daemon log"
     echo -e "  ${CYAN}3)${NC} Tail dashboard log"
-    echo -e "  ${CYAN}4)${NC} Last 100 lines — daemon"
-    echo -e "  ${CYAN}5)${NC} Last 100 lines — dashboard"
+    echo -e "  ${CYAN}4)${NC} Tail MCP log"
+    echo -e "  ${CYAN}5)${NC} Last 100 lines — daemon"
+    echo -e "  ${CYAN}6)${NC} Last 100 lines — dashboard"
     echo -e "  ${CYAN}0)${NC} Back"
     echo ""
     read -r -p "  Choice: " choice
@@ -1016,8 +1078,9 @@ menu_logs() {
       1) cmd_logs ;;
       2) cmd_daemon logs ;;
       3) cmd_dashboard logs ;;
-      4) [[ -f "$DAEMON_LOG_FILE" ]]    && tail -n 100 "$DAEMON_LOG_FILE"    || print_warn "No daemon log file" ;;
-      5) [[ -f "$DASHBOARD_LOG_FILE" ]] && tail -n 100 "$DASHBOARD_LOG_FILE" || print_warn "No dashboard log file" ;;
+      4) cmd_mcp logs ;;
+      5) [[ -f "$DAEMON_LOG_FILE" ]]    && tail -n 100 "$DAEMON_LOG_FILE"    || print_warn "No daemon log file" ;;
+      6) [[ -f "$DASHBOARD_LOG_FILE" ]] && tail -n 100 "$DASHBOARD_LOG_FILE" || print_warn "No dashboard log file" ;;
       0|"") return ;;
       *) print_warn "Invalid choice" ;;
     esac
@@ -1047,7 +1110,8 @@ menu_main() {
     echo -e "  ${CYAN}5)${NC} Database"
     echo -e "  ${CYAN}6)${NC} Daemon"
     echo -e "  ${CYAN}7)${NC} Dashboard"
-    echo -e "  ${CYAN}8)${NC} Logs"
+    echo -e "  ${CYAN}8)${NC} MCP Server"
+    echo -e "  ${CYAN}9)${NC} Logs"
     echo ""
     echo -e "  ${CYAN}0)${NC} Exit"
     echo ""
@@ -1060,7 +1124,8 @@ menu_main() {
       5) menu_database ;;
       6) menu_daemon ;;
       7) menu_dashboard ;;
-      8) menu_logs ;;
+      8) menu_mcp ;;
+      9) menu_logs ;;
       0|q|Q|exit|quit) echo ""; exit 0 ;;
       *) print_warn "Invalid choice" ;;
     esac
