@@ -67,6 +67,10 @@ DAEMON_PID_FILE="${IW_CORE_PID_FILE:-.daemon.pid}"
 DAEMON_LOG_FILE="${IW_CORE_LOG_FILE:-./logs/daemon.log}"
 DASHBOARD_PID_FILE=".dashboard.pid"
 DASHBOARD_LOG_FILE="./logs/dashboard.log"
+MCP_HTTP_HOST="${IW_CORE_MCP_HTTP_HOST:-0.0.0.0}"
+MCP_HTTP_PORT="${IW_CORE_MCP_HTTP_PORT:-9901}"
+MCP_PID_FILE=".mcp.pid"
+MCP_LOG_FILE="./logs/mcp.log"
 
 # =============================================================================
 # COLORS & OUTPUT HELPERS
@@ -563,6 +567,121 @@ cmd_dashboard() {
 }
 
 # =============================================================================
+# MCP SERVER (HTTP transport — independent agent-control network service)
+# =============================================================================
+
+cmd_mcp() {
+  local sub="${1:-help}"
+  shift || true
+  case "$sub" in
+    start)
+      local existing_pid
+      existing_pid=$(read_pid "$MCP_PID_FILE")
+      if pid_alive "$existing_pid"; then
+        print_warn "MCP server already running (PID $existing_pid)"
+        return 0
+      elif [[ -n "$existing_pid" ]]; then
+        rm -f "$MCP_PID_FILE"
+      fi
+      # Refuse if a foreign process (e.g. a stray manual run) already holds the port
+      local foreign_pid
+      foreign_pid=$(port_listener_pid "$MCP_HTTP_PORT")
+      if [[ -n "$foreign_pid" ]]; then
+        print_err "Port $MCP_HTTP_PORT is already in use by a foreign process:"
+        print_err "  $(ps_line "$foreign_pid")"
+        print_err "Stop that process first, or set a different IW_CORE_MCP_HTTP_PORT."
+        return 1
+      fi
+      ensure_log_dir
+      print_info "Starting MCP HTTP server on ${MCP_HTTP_HOST}:${MCP_HTTP_PORT}..."
+      # Write tools default ON via the iw-mcp entry point; set
+      # IW_CORE_MCP_ENABLE_WRITE_TOOLS=false in .env for a read-only server.
+      nohup uv run iw mcp serve --http --host "$MCP_HTTP_HOST" --port "$MCP_HTTP_PORT" \
+        >> "$MCP_LOG_FILE" 2>&1 &
+      local wrapper_pid=$!
+      echo "$wrapper_pid" > "$MCP_PID_FILE"
+      print_info "Waiting for MCP server to bind port ${MCP_HTTP_PORT}..."
+      local i=0 ready=false listener_pid=""
+      while [[ $i -lt 15 ]]; do
+        sleep 1
+        i=$((i + 1))
+        if ! pid_alive "$wrapper_pid"; then
+          print_err "MCP server exited before binding port $MCP_HTTP_PORT — check $MCP_LOG_FILE"
+          tail -10 "$MCP_LOG_FILE" 2>/dev/null | sed 's/^/      /'
+          rm -f "$MCP_PID_FILE"
+          return 1
+        fi
+        listener_pid=$(port_listener_pid "$MCP_HTTP_PORT")
+        if [[ -n "$listener_pid" ]] && is_descendant "$listener_pid" "$wrapper_pid"; then
+          ready=true
+          break
+        fi
+      done
+      if [[ "$ready" != true ]]; then
+        print_err "MCP server did not bind within 15s — check $MCP_LOG_FILE"
+        tail -10 "$MCP_LOG_FILE" 2>/dev/null | sed 's/^/      /'
+        rm -f "$MCP_PID_FILE"
+        return 1
+      fi
+      print_ok "MCP server running (PID $wrapper_pid) — http://${DB_HOST}:${MCP_HTTP_PORT}/mcp/"
+      ;;
+    stop)
+      local pid
+      pid=$(read_pid "$MCP_PID_FILE")
+      if [[ -z "$pid" ]]; then
+        print_warn "No PID file — MCP server may not be running"
+        return 0
+      fi
+      if ! pid_alive "$pid"; then
+        print_warn "Stale PID file (PID $pid dead) — cleaning up"
+        rm -f "$MCP_PID_FILE"
+        return 0
+      fi
+      print_info "Stopping MCP server (PID $pid)..."
+      kill -TERM "$pid"
+      local i=0
+      while pid_alive "$pid"; do
+        i=$((i + 1))
+        if [[ $i -ge 10 ]]; then
+          kill -KILL "$pid" 2>/dev/null || true
+          break
+        fi
+        sleep 1
+      done
+      rm -f "$MCP_PID_FILE"
+      print_ok "MCP server stopped"
+      ;;
+    restart)
+      cmd_mcp stop; cmd_mcp start
+      ;;
+    status)
+      local pid
+      pid=$(read_pid "$MCP_PID_FILE")
+      if [[ -n "$pid" ]] && pid_alive "$pid"; then
+        print_ok "MCP server: running (PID $pid) — http://${DB_HOST}:${MCP_HTTP_PORT}/mcp/"
+      elif [[ -n "$pid" ]]; then
+        print_err "MCP server: PID $pid in file but process is dead (stale PID file)"
+      elif port_listening "$MCP_HTTP_PORT"; then
+        print_warn "MCP server: port $MCP_HTTP_PORT in use but no PID file"
+      else
+        print_err "MCP server: not running"
+      fi
+      ;;
+    logs)
+      local lines="${1:-50}"
+      if [[ -f "$MCP_LOG_FILE" ]]; then
+        tail -f -n "$lines" "$MCP_LOG_FILE"
+      else
+        print_err "Log file not found: $MCP_LOG_FILE"
+      fi
+      ;;
+    *)
+      echo "  Usage: $0 mcp {start|stop|restart|status|logs [lines]}"
+      ;;
+  esac
+}
+
+# =============================================================================
 # COMPOUND COMMANDS
 # =============================================================================
 
@@ -582,13 +701,17 @@ cmd_start() {
   print_ok "Migrations up to date"
   cmd_daemon start || { print_err "Daemon failed to start — aborting"; return 1; }
   cmd_dashboard start || return 1
+  # MCP HTTP server is non-fatal: a bind failure must not abort the core stack.
+  cmd_mcp start || print_warn "MCP server failed to start (non-fatal) — check $MCP_LOG_FILE"
   echo ""
   print_ok "All services started"
   print_dim "Dashboard → http://${DB_HOST}:${DASHBOARD_PORT}"
+  print_dim "MCP (HTTP) → http://${DB_HOST}:${MCP_HTTP_PORT}/mcp/"
 }
 
 cmd_stop() {
   print_header "Stopping IW AI Core"
+  cmd_mcp stop
   cmd_dashboard stop
   cmd_daemon stop
   cmd_db stop
@@ -658,6 +781,21 @@ cmd_status() {
     print_warn "Dashboard: port $DASHBOARD_PORT in use but no PID file"
   else
     print_err "Dashboard: not running"
+  fi
+
+  # MCP server (HTTP transport)
+  echo ""
+  echo -e "  ${BOLD}MCP Server${NC}"
+  local mcp_pid
+  mcp_pid=$(read_pid "$MCP_PID_FILE")
+  if [[ -n "$mcp_pid" ]] && pid_alive "$mcp_pid"; then
+    print_ok "MCP server: running (PID $mcp_pid) — http://${DB_HOST}:${MCP_HTTP_PORT}/mcp/"
+  elif [[ -n "$mcp_pid" ]]; then
+    print_err "MCP server: stale PID file (PID $mcp_pid dead)"
+  elif port_listening "$MCP_HTTP_PORT"; then
+    print_warn "MCP server: port $MCP_HTTP_PORT in use but no PID file"
+  else
+    print_err "MCP server: not running"
   fi
 
   # Recent daemon events (if DB is up)
@@ -901,7 +1039,7 @@ menu_main() {
     get_status_line
     echo ""
 
-    echo -e "  ${CYAN}1)${NC} Start all        (db → migrate → daemon → dashboard)"
+    echo -e "  ${CYAN}1)${NC} Start all        (db → migrate → daemon → dashboard → mcp)"
     echo -e "  ${CYAN}2)${NC} Stop all"
     echo -e "  ${CYAN}3)${NC} Restart all"
     echo -e "  ${CYAN}4)${NC} Status"
@@ -945,8 +1083,8 @@ ${BOLD}USAGE${NC}
   ./ai-core.sh <command> [args]     CLI mode
 
 ${BOLD}COMPOUND${NC}
-  start                             db → migrate → daemon → dashboard
-  stop                              dashboard → daemon → db
+  start                             db → migrate → daemon → dashboard → mcp
+  stop                              mcp → dashboard → daemon → db
   restart                           stop + start
   status                            Full status summary
   logs                              Tail daemon + dashboard logs together
@@ -973,6 +1111,10 @@ ${BOLD}DASHBOARD${NC}
   dashboard dev                     Foreground with --reload
   dashboard logs [N]                Tail dashboard log (default 50 lines)
 
+${BOLD}MCP SERVER${NC} (HTTP transport — independent agent-control service)
+  mcp start|stop|restart|status     Serve on IW_CORE_MCP_HTTP_HOST:PORT (default 0.0.0.0:9901)
+  mcp logs [N]                       Tail MCP server log (default 50 lines)
+
 ${BOLD}EXAMPLES${NC}
   ./ai-core.sh start
   ./ai-core.sh status
@@ -997,6 +1139,7 @@ case "$CMD" in
   db)           cmd_db "$@" ;;
   daemon)       cmd_daemon "$@" ;;
   dashboard)    cmd_dashboard "$@" ;;
+  mcp)          cmd_mcp "$@" ;;
   # Legacy --flag aliases (backwards compat with old callers)
   --status)     cmd_status ;;
   --start)      cmd_start ;;
