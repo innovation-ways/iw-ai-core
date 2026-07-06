@@ -107,7 +107,7 @@ dev = [
     "pytest-rerunfailures>=14.0,<16",
     "diff-cover>=9",
     "vulture>=2.11",
-    "deptry>=0.20",
+    "deptry>=0.25.1",
     "pgtestdbpy>=0.0.1",
     "Pillow",
     "pixelmatch",
