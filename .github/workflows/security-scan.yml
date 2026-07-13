@@ -75,7 +75,7 @@ jobs:
       # compliance-scan.yml.
       - name: Upload SARIF
         if: always() && !github.event.repository.private && hashFiles('gitleaks.sarif') != ''
-        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks
@@ -109,7 +109,7 @@ jobs:
       # compliance-scan.yml.
       - name: Upload SARIF
         if: always() && !github.event.repository.private && hashFiles('trivy-iac.sarif') != ''
-        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           sarif_file: trivy-iac.sarif
           category: trivy-iac
@@ -144,7 +144,7 @@ jobs:
       # compliance-scan.yml.
       - name: Upload SARIF
         if: always() && !github.event.repository.private && hashFiles('semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           sarif_file: semgrep.sarif
           category: semgrep
