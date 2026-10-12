@@ -538,8 +538,8 @@ security-deps:
 	}
 	@mkdir -p $(SECURITY_DIR)
 	@echo "[security-deps] pip-audit ..."
-	@uv run pip-audit -l --format=json --output=$(SECURITY_DIR)/pip-audit.json || true
-	@uv run pip-audit -l --strict || true
+	@uv run pip-audit -l --ignore-vuln PYSEC-2026-3740 --format=json --output=$(SECURITY_DIR)/pip-audit.json || true
+	@uv run pip-audit -l --ignore-vuln PYSEC-2026-3740 --strict || true
 	@echo "[security-deps] bandit ..."
 	@uv run bandit -r orch dashboard executor -c pyproject.toml -f json -o $(SECURITY_DIR)/bandit.json -ll || true
 	@uv run bandit -r orch dashboard executor -c pyproject.toml -ll || true

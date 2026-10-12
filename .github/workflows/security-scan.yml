@@ -39,9 +39,13 @@ jobs:
         # so this job relies on pip-audit's non-zero exit on vulnerabilities to gate.
         # --strict is intentionally NOT set: it would treat the local iw-ai-core
         # "not on PyPI" skip as a failure.
+        # PYSEC-2026-3740 (nltk, CVE-2026-81726): sandbox bypass in nltk's parser
+        # model train/save APIs; no fixed release exists. nltk is only a transitive
+        # dep of llama-index-core and those APIs are never called. Drop the ignore
+        # once nltk publishes a fix.
         run: |
           set -euo pipefail
-          uv run pip-audit -l
+          uv run pip-audit -l --ignore-vuln PYSEC-2026-3740
 
       - name: Bandit
         # Bandit 1.x has no native SARIF format (only csv/html/json/screen/txt/xml/yaml).
