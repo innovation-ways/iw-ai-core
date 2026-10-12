@@ -65,7 +65,7 @@ def llm_usage_embed(request: Request, provider: str = "claude") -> Any:
 
     Args:
         request: The current FastAPI request.
-        provider: One of ``"claude"``, ``"codex"``, ``"minimax"``.
+        provider: One of ``"claude"``, ``"codex"``, ``"minimax"``, ``"tavily"``.
 
     Returns:
         Standalone HTML page rendering that provider's usage-window bars.
@@ -89,6 +89,12 @@ def llm_usage_embed(request: Request, provider: str = "claude") -> Any:
                 {"label": codex.get("block_reset") or "5h", "pct": codex["block_pct"]},
                 {"label": codex.get("week_reset") or "7d", "pct": codex["week_pct"]},
             ]
+    elif provider == "tavily":
+        tavily = usage.get("tavily") or {"block_pct": 0, "used": 0, "total": 1000}
+        used = tavily.get("used", 0)
+        total = tavily.get("total", 1000)
+        suffix = " (stale)" if tavily.get("stale") else ""
+        windows = [{"label": f"{used} / {total} credits{suffix}", "pct": tavily["block_pct"]}]
     else:  # claude (default)
         claude = usage["claude"]
         windows = [
@@ -102,7 +108,7 @@ def llm_usage_embed(request: Request, provider: str = "claude") -> Any:
     response = request.app.state.templates.TemplateResponse(
         request,
         "fragments/llm_usage_embed.html",
-        {"windows": windows, "warning": warning},
+        {"windows": windows, "warning": warning, "provider": provider},
     )
     # Bars must always reflect live usage; never let a browser/iframe serve a
     # stale (e.g. differently-colored) cached copy.

@@ -38,6 +38,7 @@ from dashboard.routers import (
     docs,
     docs_global,
     healthz,
+    homelab,
     items,
     jobs_ui,
     keep_alive,
@@ -569,5 +570,6 @@ def create_app() -> FastAPI:
     app.include_router(staleness.router)
     app.include_router(coverage.router)
     app.include_router(usage.router)
+    app.include_router(homelab.router)
 
     return app

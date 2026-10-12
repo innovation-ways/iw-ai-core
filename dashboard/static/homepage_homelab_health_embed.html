@@ -1,0 +1,166 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="color-scheme" content="dark light" />
+  <style>
+    :root { --ok:#22c55e; --warn:#f59e0b; --crit:#ef4444; --unk:#94a3b8; --fg:#e2e8f0; --muted:#94a3b8; --line:rgba(148,163,184,.22); --bg:rgba(15,23,42,.18); }
+    html, body { margin:0; padding:0; background:transparent; color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:12px; overflow:hidden; }
+    body { box-sizing:border-box; height:100vh; padding:2px 4px; }
+    .view { display:none; height:100%; }
+    .view.active { display:flex; flex-direction:column; gap:5px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; }
+    .tile { border:1px solid var(--line); border-radius:8px; padding:6px; background:var(--bg); min-width:0; }
+    .k { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .v { font-weight:700; font-size:15px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sub { color:var(--muted); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+    .status { display:inline-flex; align-items:center; gap:5px; font-weight:700; }
+    .dot { width:8px; height:8px; border-radius:999px; display:inline-block; background:var(--unk); box-shadow:0 0 10px currentColor; color:var(--unk); }
+    .ok { color:var(--ok); } .ok .dot, .dot.ok { background:var(--ok); color:var(--ok); }
+    .warning { color:var(--warn); } .warning .dot, .dot.warning { background:var(--warn); color:var(--warn); }
+    .critical { color:var(--crit); } .critical .dot, .dot.critical { background:var(--crit); color:var(--crit); }
+    .unknown { color:var(--unk); } .unknown .dot, .dot.unknown { background:var(--unk); color:var(--unk); }
+    .row { display:grid; grid-template-columns:72px minmax(72px,1fr) 58px 64px 42px; gap:6px; align-items:center; border-bottom:1px solid var(--line); padding:3px 0; min-height:18px; }
+    .row.header { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.03em; border-bottom:1px solid rgba(148,163,184,.35); }
+    .hostrow { grid-template-columns:82px 1fr 48px 48px 48px; }
+    .cell { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bar { height:6px; background:rgba(148,163,184,.2); border-radius:999px; overflow:hidden; }
+    .fill { display:block; height:100%; border-radius:999px; width:0; background:var(--ok); }
+    .rows { overflow:hidden; }
+    .loading { color:var(--muted); padding:8px; }
+  </style>
+</head>
+<body>
+  <div id="summary" class="view"><div class="loading">Loading homelab health…</div></div>
+  <div id="filesystems" class="view"><div class="loading">Loading filesystems…</div></div>
+  <div id="hosts" class="view"><div class="loading">Loading hosts…</div></div>
+<script>
+// Prometheus base: ?prom=http://host:9090 on the embed URL, else this host's :9090.
+const PROM = (new URLSearchParams(location.search).get('prom') || (location.protocol + '//' + location.hostname + ':9090')).replace(/\/+$/, '');
+const REFRESH_MS = 120000;
+const STALE_MS = 10 * 60 * 1000;
+const HOSTS = {
+  'netdata-home': 'home-srv',
+  'node-exporter': 'home-srv',
+  'netdata-dev': 'iw-dev-01',
+  'node-exporter-proxmox': 'iw-home-01',
+  'qnap-exporter': 'iw-nas-02',
+};
+const EXPECTED = ['home-srv','iw-dev-01','iw-home-01','iw-nas-02'];
+const FS_DENY = /^(tmpfs|devtmpfs|overlay|squashfs|ramfs|proc|sysfs|cgroup|cgroup2|nsfs|tracefs|debugfs|securityfs|pstore|autofs|mqueue|hugetlbfs|configfs|binfmt_misc)$/;
+const FS_ALLOW = new Set(['/', '/home', '/opt/data', '/var', '/var/lib/docker', '/mnt/git', '/mnt/nas', '/mnt/media-nas', '/mnt/backups-nas', '/mnt/backups', '/mnt/media', '/mnt/photos', '/mnt/appdata', '/mnt/databases', '/mnt/docker', '/mnt/frigate']);
+function qs(name){ return new URLSearchParams(location.search).get(name); }
+function view(){ return qs('view') || 'summary'; }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function stateClass(s){ return s === 'critical' ? 'critical' : s === 'warning' ? 'warning' : s === 'ok' ? 'ok' : 'unknown'; }
+function fmtGiB(v){ if (!Number.isFinite(v)) return '—'; if (v >= 1024) return (v/1024).toFixed(v >= 10240 ? 0 : 1) + ' TB'; return v.toFixed(v >= 100 ? 0 : 1) + ' GB'; }
+function pct(v){ return Number.isFinite(v) ? Math.round(v) + '%' : '—'; }
+function fsState(usedPct, availGiB){ if (!Number.isFinite(usedPct)) return 'unknown'; if (usedPct >= 95 || availGiB < 5) return 'critical'; if (usedPct >= 90 || availGiB < 10) return 'critical'; if (usedPct >= 80 || availGiB < 20) return 'warning'; return 'ok'; }
+function pressureState(p){ if (!Number.isFinite(p)) return 'unknown'; if (p >= 90) return 'critical'; if (p >= 80) return 'warning'; return 'ok'; }
+function memStateForHost(h){ return h.name === 'iw-home-01' ? 'ok' : pressureState(h.mem); }
+function hostState(h){ return worst([h.up, pressureState(h.cpu), memStateForHost(h)]); }
+function worst(states){ return states.includes('critical') ? 'critical' : states.includes('warning') ? 'warning' : states.includes('unknown') ? 'unknown' : 'ok'; }
+function colorForState(s){ return s === 'critical' ? 'var(--crit)' : s === 'warning' ? 'var(--warn)' : s === 'ok' ? 'var(--ok)' : 'var(--unk)'; }
+async function prom(query){ const r = await fetch(`${PROM}/api/v1/query?query=${encodeURIComponent(query)}`, {cache:'no-store'}); if(!r.ok) throw new Error(`Prometheus HTTP ${r.status}`); const j = await r.json(); if(j.status !== 'success') throw new Error('Prometheus query failed'); return j.data.result || []; }
+function val(item){ return Number(item?.value?.[1]); }
+function metricKey(m){ return `${m.job}|${m.instance}`; }
+function sourceHost(metric){
+  const job = metric.job || '';
+  if (metric.host) return metric.host;
+  const mp = metric.mount_point || metric.mountpoint || '';
+  const dev = metric.device || '';
+  if (dev.startsWith('iw-home-01:') || dev.includes('/hdd-pool/') || dev.includes('/ssd-pool/')) return 'iw-home-01';
+  if (dev.startsWith('//') || dev.toLowerCase().includes('media-nas')) return 'iw-nas-02';
+  if (HOSTS[job]) return HOSTS[job];
+  return metric.instance || job || 'unknown';
+}
+function includeFs(metric){
+  const mp = metric.mount_point || metric.mountpoint || '';
+  const fs = metric.filesystem || metric.fstype || '';
+  const dev = metric.device || '';
+  if (!mp || FS_DENY.test(fs)) return false;
+  if (FS_ALLOW.has(mp)) return true;
+  if (dev.startsWith('iw-home-01:') || dev.startsWith('//')) return true;
+  return false;
+}
+async function collect(){
+  const [up, alerts, netCpu, netRam, netFs, nodeSize, nodeAvail, nodeCpu, nodeMemTot, nodeMemAvail, qnapCpu, qnapMem] = await Promise.all([
+    prom('up'),
+    prom('ALERTS{alertstate="firing"}'),
+    prom('netdata_system_cpu_percentage_average{dimension!="idle"}'),
+    prom('netdata_system_ram_MiB_average'),
+    prom('netdata_disk_space_GiB_average'),
+    prom('node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|overlay|squashfs|fuse.*|ramfs|proc|sysfs|cgroup.*|nsfs|tracefs|debugfs|securityfs|pstore|autofs|mqueue|hugetlbfs|configfs|binfmt_misc"}'),
+    prom('node_filesystem_avail_bytes{fstype!~"tmpfs|devtmpfs|overlay|squashfs|fuse.*|ramfs|proc|sysfs|cgroup.*|nsfs|tracefs|debugfs|securityfs|pstore|autofs|mqueue|hugetlbfs|configfs|binfmt_misc"}'),
+    prom('100 * (1 - avg by (job,instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))'),
+    prom('node_memory_MemTotal_bytes'),
+    prom('node_memory_MemAvailable_bytes'),
+    prom('qnap_cpu_usage_percent'),
+    prom('qnap_memory_used_percent'),
+  ]);
+  const upMap = new Map(up.map(x => [metricKey(x.metric), val(x)]));
+  const hosts = new Map(EXPECTED.map(h => [h, {name:h, up:'unknown', cpu:NaN, mem:NaN, state:'unknown', detail:'no Prometheus target'}]));
+  for (const x of up) { const h = HOSTS[x.metric.job]; if (h) hosts.set(h, {...(hosts.get(h)||{name:h}), up: val(x) === 1 ? 'ok' : 'critical', detail: `${x.metric.job} ${val(x) === 1 ? 'up' : 'down'}`}); }
+  const cpuAgg = new Map();
+  for (const x of netCpu) { const h = HOSTS[x.metric.job]; if(!h) continue; cpuAgg.set(h, (cpuAgg.get(h)||0) + val(x)); }
+  for (const [h,c] of cpuAgg) hosts.set(h, {...hosts.get(h), cpu: Math.max(0, Math.min(100,c))});
+  for (const x of nodeCpu) { const h = HOSTS[x.metric.job]; if(h) hosts.set(h, {...hosts.get(h), cpu: val(x)}); }
+  const ram = new Map();
+  for (const x of netRam) { const h = HOSTS[x.metric.job]; if(!h) continue; if(!ram.has(h)) ram.set(h, {}); ram.get(h)[x.metric.dimension] = val(x); }
+  for (const [h,r] of ram) { const total = (r.free||0)+(r.used||0)+(r.cached||0)+(r.buffers||0); const mem = total ? 100*(r.used||0)/total : NaN; hosts.set(h, {...hosts.get(h), mem}); }
+  const memTot = new Map(nodeMemTot.map(x => [metricKey(x.metric), val(x)]));
+  for (const x of nodeMemAvail) { const h = HOSTS[x.metric.job]; const total = memTot.get(metricKey(x.metric)); if(h && total) hosts.set(h, {...hosts.get(h), mem: 100*(1-val(x)/total)}); }
+  for (const x of qnapCpu) hosts.set('iw-nas-02', {...hosts.get('iw-nas-02'), cpu: val(x)});
+  for (const x of qnapMem) hosts.set('iw-nas-02', {...hosts.get('iw-nas-02'), mem: val(x)});
+  for (const [h,obj] of hosts) { hosts.set(h, {...obj, state:hostState(obj)}); }
+  const fsMap = new Map();
+  for (const x of netFs) {
+    if (!includeFs(x.metric)) continue;
+    const key = `${x.metric.job}|${x.metric.instance}|${x.metric.mount_point}|${x.metric.filesystem}`;
+    const rec = fsMap.get(key) || {host:sourceHost(x.metric), mount:x.metric.mount_point, fs:x.metric.filesystem, device:x.metric.device || '', used:0, avail:0, total:0};
+    if (x.metric.dimension === 'used') rec.used = val(x);
+    if (x.metric.dimension === 'avail') rec.avail = val(x);
+    fsMap.set(key, rec);
+  }
+  const nodeSizes = new Map();
+  for (const x of nodeSize) if (includeFs(x.metric)) nodeSizes.set(`${x.metric.instance}|${x.metric.mountpoint}|${x.metric.device}|${x.metric.fstype}`, x);
+  for (const x of nodeAvail) {
+    if (!includeFs(x.metric)) continue;
+    const k = `${x.metric.instance}|${x.metric.mountpoint}|${x.metric.device}|${x.metric.fstype}`;
+    const s = nodeSizes.get(k); if(!s) continue;
+    const size = val(s)/1024/1024/1024, avail = val(x)/1024/1024/1024;
+    fsMap.set(`node|${k}`, {host:sourceHost(x.metric), mount:x.metric.mountpoint, fs:x.metric.fstype, device:x.metric.device||'', used:size-avail, avail, total:size});
+  }
+  const filesystems = Array.from(fsMap.values()).map(f => { f.total = f.total || (f.used + f.avail); f.usedPct = f.total ? 100*f.used/f.total : NaN; f.state = fsState(f.usedPct, f.avail); return f; })
+    .filter(f => f.total > 0.05)
+    .filter(f => !(f.host === 'iw-nas-02' && String(f.mount || '').toLowerCase().includes('backup')))
+    .sort((a,b) => ({critical:3,warning:2,unknown:1,ok:0}[b.state]-{critical:3,warning:2,unknown:1,ok:0}[a.state]) || b.usedPct-a.usedPct);
+  const now = Date.now();
+  return {hosts:Array.from(hosts.values()), filesystems, alerts:alerts.length, ts:now, stale:false, overall:'ok'};
+}
+function renderSummary(data){
+  const fsWorst = data.filesystems[0];
+  const hostWorst = worst(data.hosts.map(h=>h.state));
+  const alertState = data.alerts > 0 ? 'critical' : 'ok';
+  const overall = worst([fsWorst?.state || 'unknown', hostWorst, alertState]);
+  document.getElementById('summary').innerHTML = `<div class="grid">
+    <div class="tile"><div class="k">Overall</div><div class="v ${stateClass(overall)}"><span class="dot"></span> ${overall.toUpperCase()}</div><div class="sub">Prometheus-backed, refresh 2m</div></div>
+    <div class="tile"><div class="k">Alerts</div><div class="v ${stateClass(alertState)}">${data.alerts} firing</div><div class="sub">Alertmanager / Prometheus</div></div>
+    <div class="tile"><div class="k">Hosts</div><div class="v ${stateClass(hostWorst)}">${data.hosts.filter(h=>h.state==='ok').length}/${data.hosts.length} OK</div><div class="sub">${data.hosts.filter(h=>h.state!=='ok').map(h=>h.name+': '+h.state).join(' · ') || 'all monitored hosts OK'}</div></div>
+    <div class="tile"><div class="k">Worst filesystem</div><div class="v ${stateClass(fsWorst?.state)}">${esc(fsWorst ? fsWorst.host+' '+fsWorst.mount : 'unknown')}</div><div class="sub">${fsWorst ? pct(fsWorst.usedPct)+' used · '+fmtGiB(fsWorst.avail)+' free' : 'no data'}</div></div>
+  </div>`;
+}
+function fsRow(f){ const width=Math.max(0,Math.min(100,f.usedPct||0)); return `<div class="row"><div class="cell">${esc(f.host)}</div><div class="cell" title="${esc(f.device)}">${esc(f.mount)}</div><div class="cell">${fmtGiB(f.total)}</div><div class="cell"><div class="bar"><span class="fill" style="width:${width}%;background:${colorForState(f.state)}"></span></div></div><div class="cell ${stateClass(f.state)}">${pct(f.usedPct)}</div></div>`; }
+function renderFs(data){ document.getElementById('filesystems').innerHTML = `<div class="row header"><div>Host</div><div>Mount</div><div>Total</div><div>Used</div><div>%</div></div><div class="rows">${data.filesystems.slice(0,18).map(fsRow).join('')}</div>`; }
+function hostRow(h){ const c=pressureState(h.cpu), m=memStateForHost(h), memNote=h.name==='iw-home-01' ? `${pct(h.mem)} reserved` : pct(h.mem); return `<div class="row hostrow"><div class="cell ${stateClass(h.state)}"><span class="dot ${stateClass(h.state)}"></span> ${esc(h.name)}</div><div class="cell">${esc(h.detail || '')}</div><div class="cell ${stateClass(h.up)}">${h.up}</div><div class="cell ${stateClass(c)}">${pct(h.cpu)}</div><div class="cell ${stateClass(m)}">${memNote}</div></div>`; }
+function renderHosts(data){ document.getElementById('hosts').innerHTML = `<div class="row hostrow header"><div>Host</div><div>Source</div><div>Up</div><div>CPU</div><div>RAM</div></div><div class="rows">${data.hosts.map(hostRow).join('')}</div>`; }
+async function refresh(){
+  const active = view();
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === active));
+  try { const data = await collect(); renderSummary(data); renderFs(data); renderHosts(data); }
+  catch(e){ document.getElementById(active).innerHTML = `<div class="tile"><div class="v unknown"><span class="dot"></span> UNKNOWN</div><div class="sub">${esc(e.message || e)}</div></div>`; }
+}
+refresh(); setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

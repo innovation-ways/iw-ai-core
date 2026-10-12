@@ -1004,13 +1004,18 @@ class TestCacheTTL:
         # Clear cache to ensure first call goes through and populates cache
         llm_usage_mod._cache.clear()
 
-        # First call — populates cache
+        # First call — populates cache. It may query multiple providers, but the
+        # second call inside the TTL must not make any additional httpx calls.
         llm_usage_mod.get_llm_usage()
+        calls_after_first = len(get_calls)
+        assert calls_after_first >= 1
+
         # Second call — should hit cache
         llm_usage_mod.get_llm_usage()
 
-        # Only one httpx call was made (cache hit on second)
-        assert len(get_calls) == 1, f"expected 1 httpx call, got {len(get_calls)}"
+        assert len(get_calls) == calls_after_first, (
+            f"expected cache hit with {calls_after_first} httpx calls, got {len(get_calls)}"
+        )
 
     def test_second_call_hits_cache_when_data_seeded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When cache has both ts and data, subsequent calls return cached data without HTTP."""
@@ -2003,6 +2008,48 @@ class TestCodexStatusDiscriminator:
             f"expected 0 network calls (proactive expiry), got {len(no_network_calls)}"
         )
         assert "token" in caplog.text.lower() or "expired" in caplog.text.lower()
+
+    def test_expired_token_refreshes_and_fetches_usage(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Expired OAuth token is refreshed via auth.openai.com before usage fetch."""
+        auth_file = _write_opencode_auth_oauth(tmp_path, access="old-access", account_id="acct-1")
+        payload = json.loads(auth_file.read_text())
+        payload["openai"]["expires"] = 1
+        auth_file.write_text(json.dumps(payload))
+
+        def fake_post(url: str, **kwargs: Any) -> MagicMock:
+            assert url.endswith("/oauth/token")
+            assert kwargs["data"]["grant_type"] == "refresh_token"
+            assert kwargs["data"]["refresh_token"] == "refresh-tok"  # noqa: S105
+            resp = MagicMock()
+            resp.json.return_value = {
+                "access_token": "new-access",
+                "refresh_token": "new-refresh",
+                "expires_in": 3600,
+            }
+            return resp
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:
+            assert kwargs["headers"]["Authorization"] == "Bearer new-access"
+            return _fake_response(_codex_usage_payload(primary_pct=22, secondary_pct=5))
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.post", fake_post)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            result = llm_usage._codex_usage()
+
+        saved = json.loads(auth_file.read_text())["openai"]
+        assert saved["access"] == "new-access"
+        assert saved["refresh"] == "new-refresh"
+        assert saved["expires"] > 1
+        assert result["status"] == "ok"
+        assert result["block_pct"] == 22
 
     def test_401_response_yields_expired_status(
         self,

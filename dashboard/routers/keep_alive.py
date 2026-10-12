@@ -23,7 +23,12 @@ router = APIRouter(tags=["keep-alive"])
 # psycopg.errors.NumericValueOutOfRange at query time (I-00110).
 _BIGINT_MAX = 2**63 - 1
 
-ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"]
+ALLOWED_MODELS = [
+    "claude-sonnet-5-5",
+    "claude-sonnet-4-6",
+    "claude-opus-4-7",
+    "claude-haiku-4-5-20251001",
+]
 ALLOWED_WINDOW_HOURS = [3, 4, 5, 6]
 
 

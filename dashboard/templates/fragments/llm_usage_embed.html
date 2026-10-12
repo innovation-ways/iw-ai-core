@@ -22,7 +22,7 @@
     /* display:block is essential — these are <span>s, and inline elements
        ignore width/height, which rendered the fill at 0x0 (invisible color). */
     .track { display: block; flex: 1; height: 6px; background: rgba(148, 163, 184, 0.25); border-radius: 9999px; overflow: hidden; forced-color-adjust: none; }
-    .fill { display: block; width: 0; height: 100%; border-radius: 9999px; transition: width 0.7s ease; forced-color-adjust: none; }
+    .fill { display: block; width: 0; height: 100%; border-radius: 9999px; forced-color-adjust: none; }
     .pct { min-width: 34px; text-align: right; font-weight: 600; color: #e2e8f0; font-variant-numeric: tabular-nums; }
     .warn { font-size: 12px; color: #f59e0b; }
     {% for w in windows %}
@@ -32,15 +32,106 @@
 </head>
 <body>
   {% if warning %}
-  <div class="warn">⚠ {{ warning }}</div>
+  <div class="warn" data-warning>⚠ {{ warning }}</div>
   {% else %}
   {% for w in windows %}
-  <div class="row">
-    <span class="lbl">{{ w.label }}</span>
-    <span class="track"><span class="fill fill-{{ loop.index0 }}"></span></span>
-    <span class="pct">{{ w.pct }}%</span>
+  <div class="row" data-row="{{ loop.index0 }}">
+    <span class="lbl" data-label>{{ w.label }}</span>
+    <span class="track"><span class="fill fill-{{ loop.index0 }}" data-fill></span></span>
+    <span class="pct" data-pct>{{ w.pct }}%</span>
   </div>
   {% endfor %}
   {% endif %}
+  <script>
+    const PROVIDER = {{ provider | tojson }};
+    const REFRESH_MS = 60000;
+
+    function barColor(pct) {
+      const bounded = Math.max(0, Math.min(100, Number(pct) || 0));
+      const hue = 120 - (bounded * 1.2);
+      return `hsl(${Math.round(hue)}, 75%, 48%)`;
+    }
+
+    function providerWindows(usage) {
+      if (PROVIDER === 'minimax') {
+        const minimax = usage.minimax || {};
+        const windows = [{ label: minimax.block_reset || '5h', pct: minimax.block_pct || 0 }];
+        if (minimax.week_pct !== undefined && minimax.week_pct !== null) {
+          windows.push({ label: minimax.week_reset || '7d', pct: minimax.week_pct || 0 });
+        }
+        return { windows, warning: null };
+      }
+      if (PROVIDER === 'codex') {
+        const codex = usage.codex || { block_pct: 0, week_pct: 0, status: 'error' };
+        const status = codex.status || 'ok';
+        if (status !== 'ok') {
+          const warnings = {
+            expired: 'token expired — re-authenticate',
+            unauthenticated: 'not configured — run opencode auth login',
+            error: 'usage unavailable',
+          };
+          return { windows: [], warning: warnings[status] || 'usage unavailable' };
+        }
+        return { windows: [
+          { label: codex.block_reset || '5h', pct: codex.block_pct || 0 },
+          { label: codex.week_reset || '7d', pct: codex.week_pct || 0 },
+        ], warning: null };
+      }
+      if (PROVIDER === 'tavily') {
+        const tavily = usage.tavily || { block_pct: 0, used: 0, total: 1000 };
+        const suffix = tavily.stale ? ' (stale)' : '';
+        return { windows: [
+          { label: `${tavily.used || 0} / ${tavily.total || 1000} credits${suffix}`, pct: tavily.block_pct || 0 },
+        ], warning: null };
+      }
+      const claude = usage.claude || {};
+      return { windows: [
+        { label: claude.block_reset || '5h', pct: claude.block_pct || 0 },
+        { label: claude.week_reset || '7d', pct: claude.week_pct || 0 },
+      ], warning: null };
+    }
+
+    function render({ windows, warning }) {
+      if (warning) {
+        if (document.querySelector('[data-warning]')?.textContent !== `⚠ ${warning}`) {
+          document.body.innerHTML = `<div class="warn" data-warning>⚠ ${warning}</div>`;
+        }
+        return;
+      }
+
+      const rows = Array.from(document.querySelectorAll('[data-row]'));
+      if (rows.length !== windows.length || document.querySelector('[data-warning]')) {
+        document.body.innerHTML = windows.map((_, i) => `
+          <div class="row" data-row="${i}">
+            <span class="lbl" data-label></span>
+            <span class="track"><span class="fill" data-fill></span></span>
+            <span class="pct" data-pct></span>
+          </div>`).join('');
+      }
+
+      windows.forEach((windowData, i) => {
+        const row = document.querySelector(`[data-row="${i}"]`);
+        if (!row) return;
+        const pct = Math.max(0, Math.min(100, Number(windowData.pct) || 0));
+        row.querySelector('[data-label]').textContent = windowData.label;
+        row.querySelector('[data-pct]').textContent = `${pct}%`;
+        const fill = row.querySelector('[data-fill]');
+        fill.style.width = `${pct}%`;
+        fill.style.background = barColor(pct);
+      });
+    }
+
+    async function refreshUsage() {
+      try {
+        const response = await fetch('/api/usage/llm', { cache: 'no-store' });
+        if (!response.ok) return;
+        render(providerWindows(await response.json()));
+      } catch (_) {
+        // Keep the last good values visible; the next interval can recover.
+      }
+    }
+
+    setInterval(refreshUsage, REFRESH_MS);
+  </script>
 </body>
 </html>

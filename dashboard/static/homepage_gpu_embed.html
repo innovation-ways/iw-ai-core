@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="color-scheme" content="dark light" />
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex; flex-direction: column; justify-content: center; gap: 4px;
+      height: 100vh; overflow: hidden;
+    }
+    .row { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1; }
+    .lbl { min-width: 62px; color: #94a3b8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .track { display: block; flex: 1; height: 6px; background: rgba(148, 163, 184, 0.25); border-radius: 9999px; overflow: hidden; forced-color-adjust: none; }
+    .fill { display: block; width: 0; height: 100%; border-radius: 9999px; forced-color-adjust: none; }
+    .pct { min-width: 34px; text-align: right; font-weight: 600; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div class="row" data-row="gpu">
+    <span class="lbl">GPU</span>
+    <span class="track"><span class="fill" data-fill></span></span>
+    <span class="pct" data-pct>--%</span>
+  </div>
+  <div class="row" data-row="vram">
+    <span class="lbl">VRAM</span>
+    <span class="track"><span class="fill" data-fill></span></span>
+    <span class="pct" data-pct>--%</span>
+  </div>
+  <script>
+    // Prometheus base: ?prom=http://host:9090 on the embed URL, else this host's :9090.
+    const PROM = (new URLSearchParams(location.search).get('prom') || (location.protocol + '//' + location.hostname + ':9090')).replace(/\/+$/, '');
+    const QUERIES = {
+      gpu: 'netdata_nvidia_smi_gpu_utilization_percent_average{job="netdata-dev",dimension="gpu"}',
+      vram: '100 * sum(netdata_nvidia_smi_gpu_frame_buffer_memory_usage_B_average{job="netdata-dev",dimension="used"}) / sum(netdata_nvidia_smi_gpu_frame_buffer_memory_usage_B_average{job="netdata-dev",dimension=~"used|free|reserved"})',
+    };
+
+    function barColor(pct) {
+      const bounded = Math.max(0, Math.min(100, Number(pct) || 0));
+      return `hsl(${Math.round(120 - bounded * 1.2)}, 75%, 48%)`;
+    }
+
+    function setRow(key, value) {
+      const pct = Math.round(Math.max(0, Math.min(100, Number(value) || 0)));
+      const row = document.querySelector(`[data-row="${key}"]`);
+      row.querySelector('[data-pct]').textContent = `${pct}%`;
+      const fill = row.querySelector('[data-fill]');
+      fill.style.width = `${pct}%`;
+      fill.style.background = barColor(pct);
+    }
+
+    async function queryPrometheus(query) {
+      const response = await fetch(`${PROM}/api/v1/query?query=${encodeURIComponent(query)}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Prometheus HTTP ${response.status}`);
+      const json = await response.json();
+      const value = json?.data?.result?.[0]?.value?.[1];
+      if (value === undefined) throw new Error('Prometheus returned no result');
+      return Number(value);
+    }
+
+    async function refresh() {
+      try {
+        const [gpu, vram] = await Promise.all([
+          queryPrometheus(QUERIES.gpu),
+          queryPrometheus(QUERIES.vram),
+        ]);
+        setRow('gpu', gpu);
+        setRow('vram', vram);
+      } catch (_) {
+        // Keep last good values visible; the next interval can recover.
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>
