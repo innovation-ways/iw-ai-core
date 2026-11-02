@@ -97,6 +97,7 @@ def test_tavily_usage_uses_stale_cache_on_rate_limit(
         '{"usage": {"block_pct": 3, "used": 30, "total": 1000}}',
     )
     monkeypatch.setenv("IW_CORE_TAVILY_USAGE_CACHE", str(cache_path))
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
 
     request = llm_usage.httpx.Request("GET", "https://api.tavily.com/usage")
     response = llm_usage.httpx.Response(429, request=request)

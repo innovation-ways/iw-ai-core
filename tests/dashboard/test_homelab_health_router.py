@@ -947,10 +947,9 @@ class TestOverallState:
             r = client.get("/api/homelab/health")
 
         body = r.json()
-        allowed = {"unknown", "warning", "critical"}
-        assert body["overall"] in allowed, (
-            f"Expected overall in {allowed} when a host is unknown, got '{body['overall']}'"
-        )
+        assert body["overall"] == "unknown"
+        hosts = {h["name"]: h["up"] for h in body["hosts"]}
+        assert hosts["iw-dev-01"] == "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -988,7 +987,8 @@ class TestPrometheusUnreachable:
             r = client.get("/api/homelab/health")
 
         body = r.json()
-        assert isinstance(body["errors"], list)
+        assert body["overall"] == "unknown"
+        assert body["stale"] is True
         assert len(body["errors"]) >= 1
         # Error string should mention the failure somehow
         err_str = " ".join(body["errors"]).lower()
@@ -1202,10 +1202,11 @@ class TestProxmoxSection:
 
         body = r.json()
         proxmox_fs = body["proxmox"]["filesystems"]
-        assert isinstance(proxmox_fs, list)
-        assert len(proxmox_fs) >= 1
         root_fs = next((f for f in proxmox_fs if f["mount"] == "/"), None)
         assert root_fs is not None
+        assert root_fs["total_gib"] == pytest.approx(100.0)
+        assert root_fs["avail_gib"] == pytest.approx(70.0)
+        assert root_fs["used_pct"] == pytest.approx(30.0)
 
 
 # ---------------------------------------------------------------------------
