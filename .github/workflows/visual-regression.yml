@@ -18,7 +18,7 @@ permissions:
 jobs:
   visual-regression:
     name: Visual regression (HTML + PDF)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # BURN-IN: flip to continue-on-error: false after 2026-06-01
     continue-on-error: true
     steps:
@@ -42,8 +42,8 @@ jobs:
 
       - name: Install playwright-cli
         run: |
-          uv tool install --force playwright-cli
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install --global @playwright/cli@0.1.1
+          node "$(npm root --global)/@playwright/cli/node_modules/playwright/cli.js" install --with-deps chromium
 
       - name: Run visual regression
         run: make visual-regression

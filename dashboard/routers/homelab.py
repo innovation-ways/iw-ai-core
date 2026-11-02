@@ -828,16 +828,16 @@ def _compute(results: list[list[dict[str, Any]]]) -> dict[str, Any]:
     #: labels (lowercased) that best represent a CPU package/core temperature
     cpu_temp_prefs = ("tctl", "tdie", "package id 0", "cpu", "core 0", "temp1", "composite")
 
-    for h in hosts_list:
-        ts_raw = temps_by_host.get(h["name"], [])
+    for host_entry in hosts_list:
+        ts_raw = temps_by_host.get(host_entry["name"], [])
         seen: set[str] = set()  # dedup by label (netdata + node_hwmon can read the same chip)
         ts: list[dict[str, Any]] = []
         for t in ts_raw:
             if t["label"] not in seen:
                 seen.add(t["label"])
                 ts.append(t)
-        h["temps"] = ts
-        h["max_temp_c"] = max((t["c"] for t in ts), default=None)
+        host_entry["temps"] = ts
+        host_entry["max_temp_c"] = max((t["c"] for t in ts), default=None)
         # CPU temp only when a CPU-like sensor is actually present (home-srv is a VM: no CPU sensor)
         cpu_t: float | None = None
         for pref in cpu_temp_prefs:
@@ -847,9 +847,9 @@ def _compute(results: list[list[dict[str, Any]]]) -> dict[str, Any]:
                     break
             if cpu_t is not None:
                 break
-        h["cpu_temp_c"] = cpu_t
-        if h["name"] == "iw-dev-01":
-            h["gpu_temp_c"] = gpu_temp_c
+        host_entry["cpu_temp_c"] = cpu_t
+        if host_entry["name"] == "iw-dev-01":
+            host_entry["gpu_temp_c"] = gpu_temp_c
 
     # -----------------------------------------------------------------------
     # Overall state
