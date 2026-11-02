@@ -62,7 +62,7 @@ jobs:
     # (not fails) when the variable is absent or false, so unconfigured environments
     # are not blocked by a missing E2E stack.
     if: (github.event_name == 'pull_request' || github.event_name == 'push') && vars.E2E_CI_ENABLED == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # These must be set from workflow inputs / repository variables / secrets.
       # Operators: set IW_BROWSER_BASE_URL as a repository secret; set the port
@@ -140,7 +140,7 @@ jobs:
     # would block every PR if it ran on push; the smoke subset (e2e-smoke) is
     # the blocking gate for PRs.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true  # informational during burn-in; alerts on regression
     env:
       COMPOSE_PROJECT_NAME: ${{ github.event.inputs.e2e_stack_name || 'iw-ai-core-e2e-full' }}

@@ -18,7 +18,7 @@ permissions:
 jobs:
   visual-regression:
     name: Visual regression (HTML + PDF)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # BURN-IN: flip to continue-on-error: false after 2026-06-01
     continue-on-error: true
     steps:
