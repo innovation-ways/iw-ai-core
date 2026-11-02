@@ -42,8 +42,8 @@ jobs:
 
       - name: Install playwright-cli
         run: |
-          uv tool install --force playwright-cli
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install --global @playwright/cli@0.1.23
+          playwright-cli install-browser
 
       - name: Run visual regression
         run: make visual-regression

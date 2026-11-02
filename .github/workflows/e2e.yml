@@ -86,6 +86,11 @@ jobs:
       # scripts/e2e_up.sh requires: COMPOSE_PROJECT_NAME, E2E_FRONTEND_PORT,
       # E2E_DB_PORT, IW_BROWSER_BASE_URL. The --wait flag blocks until healthy.
       # Stale containers from prior failed runs are cleaned up inside e2e_up.sh.
+      - name: Install playwright-cli
+        run: |
+          npm install --global @playwright/cli@0.1.23
+          playwright-cli install-browser
+
       - name: Bring up E2E stack
         env:
           COMPOSE_PROJECT_NAME: ${{ env.COMPOSE_PROJECT_NAME }}
@@ -152,6 +157,11 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen
+
+      - name: Install playwright-cli
+        run: |
+          npm install --global @playwright/cli@0.1.23
+          playwright-cli install-browser
 
       - name: Bring up E2E stack
         env:
