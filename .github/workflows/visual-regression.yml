@@ -42,7 +42,7 @@ jobs:
 
       - name: Install playwright-cli
         run: |
-          npm install --global @playwright/cli@0.1.23
+          npm install --global @playwright/cli@0.1.1
           playwright-cli install-browser
 
       - name: Run visual regression

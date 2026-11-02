@@ -88,7 +88,7 @@ jobs:
       # Stale containers from prior failed runs are cleaned up inside e2e_up.sh.
       - name: Install playwright-cli
         run: |
-          npm install --global @playwright/cli@0.1.23
+          npm install --global @playwright/cli@0.1.1
           playwright-cli install-browser
 
       - name: Bring up E2E stack
@@ -160,7 +160,7 @@ jobs:
 
       - name: Install playwright-cli
         run: |
-          npm install --global @playwright/cli@0.1.23
+          npm install --global @playwright/cli@0.1.1
           playwright-cli install-browser
 
       - name: Bring up E2E stack
