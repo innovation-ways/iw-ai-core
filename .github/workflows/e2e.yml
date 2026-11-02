@@ -89,7 +89,7 @@ jobs:
       - name: Install playwright-cli
         run: |
           npm install --global @playwright/cli@0.1.1
-          playwright-cli install-browser
+          node "$(npm root --global)/@playwright/cli/node_modules/playwright/cli.js" install --with-deps chromium
 
       - name: Bring up E2E stack
         env:
@@ -161,7 +161,7 @@ jobs:
       - name: Install playwright-cli
         run: |
           npm install --global @playwright/cli@0.1.1
-          playwright-cli install-browser
+          node "$(npm root --global)/@playwright/cli/node_modules/playwright/cli.js" install --with-deps chromium
 
       - name: Bring up E2E stack
         env:
